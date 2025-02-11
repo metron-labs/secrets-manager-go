@@ -1,26 +1,74 @@
 package keyvault_azure
 
 import (
-	"bytes"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"keyvault_azure/logger"
-	klog "keyvault_azure/logger"
 	"os"
 	"path/filepath"
-	"sort"
 
+	klog "keyvault_azure/logger"
+
+	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
 )
 
+type ConfigKey string
+
+type AzureConfig struct {
+	TenantID     string
+	ClientID     string
+	ClientSecret string
+	VaultURL     string
+}
+
 type AzureKeyValueStorage struct {
 	configFileLocation  string
-	config              map[string]string
+	config              map[ConfigKey]string
 	lastSavedConfigHash string
 	cryptoClient        *azkeys.Client
-	logger              *logger.Logger
+	keyName             string
+	keyVersion          string
+}
+
+func NewAzureKeyValueStorage(keyName, keyVersion, configFileLocation string, azSessionConfig *AzureConfig) (*AzureKeyValueStorage, error) {
+	// Initialize config file location
+	if configFileLocation == "" {
+		configFileLocation = os.Getenv("KSM_CONFIG_FILE")
+		if configFileLocation == "" {
+			configFileLocation = "defaultConfigFileLocation" // Replace with your default config file location
+		}
+	}
+
+	var cred *azidentity.ClientSecretCredential
+	if azSessionConfig != nil && azSessionConfig.TenantID != "" && azSessionConfig.ClientID != "" && azSessionConfig.ClientSecret != "" {
+		var err error
+		cred, err = azidentity.NewClientSecretCredential(azSessionConfig.TenantID, azSessionConfig.ClientID, azSessionConfig.ClientSecret, nil)
+		if err != nil {
+			klog.Error("Failed to create client secret credential: %v", err)
+			return nil, err
+		}
+	}
+
+	// Initialize Azure Key Vault client
+	client, err := azkeys.NewClient(azSessionConfig.VaultURL, cred, nil)
+	if err != nil {
+		klog.Error("Failed to create Azure Key Vault client: %v", err)
+		return nil, err
+	}
+
+	azureDetails := &AzureKeyValueStorage{
+		configFileLocation:  configFileLocation,
+		config:              make(map[ConfigKey]string),
+		lastSavedConfigHash: "",
+		cryptoClient:        client,
+		keyName:             keyName,
+		keyVersion:          keyVersion,
+	}
+
+	azureDetails.loadConfig()
+	return azureDetails, nil
 }
 
 func (s *AzureKeyValueStorage) loadConfig() error {
@@ -36,31 +84,35 @@ func (s *AzureKeyValueStorage) loadConfig() error {
 	}
 
 	if len(contents) == 0 {
-		s.logger.Fatalf("Empty config file %s", s.configFileLocation)
+		klog.Error("Empty config file %s", s.configFileLocation)
 	}
 
 	// Check if the content is plain JSON
-	var config map[string]string
+	var config map[ConfigKey]string
 	var jsonError error
 	var decryptionError bool
-	var keyName string
-	var keyVersion string
 
 	configData := string(contents)
 	if err := json.Unmarshal([]byte(configData), &config); err == nil {
 		// Encrypt and save the config if it's plain JSON
 		s.config = config
-		if err := s.saveConfig(config); err != nil {
+		if err := s.saveConfig(config, false); err != nil {
 			return err
 		}
 
-		s.lastSavedConfigHash = s.createHash(config)
+		configJson, err := json.Marshal(config)
+		if err != nil {
+			return fmt.Errorf("failed to marshal config: %w", err)
+		}
+
+		s.lastSavedConfigHash = s.createHash(configJson)
+
 	} else {
 		jsonError = err
 	}
 
 	if jsonError != nil {
-		configJson, err := decryptBuffer(s.cryptoClient, keyName, keyVersion, contents)
+		configJson, err := decryptBuffer(s.cryptoClient, s.keyName, s.keyVersion, contents)
 		if err != nil {
 			decryptionError = true
 			klog.Error("Failed to decrypt config file: %s", err.Error())
@@ -69,16 +121,22 @@ func (s *AzureKeyValueStorage) loadConfig() error {
 
 		if err := json.Unmarshal([]byte(configJson), &config); err != nil {
 			decryptionError = true
-			s.logger.Fatalf("Failed to parse decrypted config file: %s", err.Error())
+			klog.Error("Failed to parse decrypted config file: %s", err.Error())
 			return fmt.Errorf("failed to parse decrypted config file %s", s.configFileLocation)
 		}
 
 		s.config = config
-		s.lastSavedConfigHash = s.createHash(config)
+		configJsonBytes, err := json.Marshal(config)
+		if err != nil {
+			return fmt.Errorf("failed to marshal config: %w", err)
+		}
+
+		configJson = string(configJsonBytes)
+		s.lastSavedConfigHash = s.createHash([]byte(configJson))
 	}
 
 	if jsonError != nil && decryptionError {
-		s.logger.Printf("Config file is not a valid JSON file: %s", jsonError.Error())
+		klog.Error("Config file is not a valid JSON file: %s", jsonError.Error())
 		return fmt.Errorf("%s may contain JSON format problems", s.configFileLocation)
 	}
 
@@ -97,7 +155,7 @@ func (s *AzureKeyValueStorage) createConfigFileIfMissing() error {
 		}
 
 		// Encrypt an empty configuration and write to the file
-		blob, err := encryptBuffer(s.cryptoClient, "{}")
+		blob, err := encryptBuffer(s.cryptoClient, s.keyName, s.keyVersion, "")
 		if err != nil {
 			return fmt.Errorf("failed to encrypt empty configuration: %w", err)
 		}
@@ -114,11 +172,10 @@ func (s *AzureKeyValueStorage) createConfigFileIfMissing() error {
 	return nil
 }
 
-func (s *AzureKeyValueStorage) saveConfig(config map[string]string) error {
-	// Retrieve current config
-	config = s.config
+func (s *AzureKeyValueStorage) saveConfig(updatedConfig map[ConfigKey]string, force bool) error {
+	config := s.config
 	if config == nil {
-		config = make(map[string]string)
+		config = make(map[ConfigKey]string)
 	}
 
 	// Convert current config to JSON and calculate its hash
@@ -134,11 +191,14 @@ func (s *AzureKeyValueStorage) saveConfig(config map[string]string) error {
 		if err != nil {
 			return fmt.Errorf("failed to marshal updated config: %w", err)
 		}
-		updatedConfigHash := createHash(updatedConfigJson)
+		updatedConfigHash := s.createHash(updatedConfigJson)
 
 		if updatedConfigHash != configHash {
 			configHash = updatedConfigHash
-			s.config = updatedConfig // Update the current config
+			s.config = make(map[ConfigKey]string)
+			for k, v := range updatedConfig {
+				s.config[k] = fmt.Sprintf("%v", v)
+			}
 		}
 	}
 
@@ -154,7 +214,7 @@ func (s *AzureKeyValueStorage) saveConfig(config map[string]string) error {
 	}
 
 	// Encrypt the config JSON and write to the file
-	blob, err := encryptBuffer(s.cryptoClient, configJson)
+	blob, err := encryptBuffer(s.cryptoClient, s.keyName, s.keyVersion, string(configJson))
 	if err != nil {
 		return fmt.Errorf("failed to encrypt config: %w", err)
 	}
@@ -168,73 +228,62 @@ func (s *AzureKeyValueStorage) saveConfig(config map[string]string) error {
 	return nil
 }
 
-func (s *AzureKeyValueStorage) createHash(config map[string]string) string {
-	keys := make([]string, 0, len(config))
-	for k := range config {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	var buffer bytes.Buffer
-	for _, k := range keys {
-		buffer.WriteString(fmt.Sprintf("%s:%s", k, config[k]))
-	}
-
-	hash := md5.Sum(buffer.Bytes())
+func (s *AzureKeyValueStorage) createHash(data []byte) string {
+	hash := md5.Sum(data)
 	return hex.EncodeToString(hash[:])
 }
 
-func (m *AzureKeyValueStorage) ReadStorage() map[string]interface{} {
+func (a *AzureKeyValueStorage) ReadStorage() map[string]interface{} {
 	// To match what FileKeyValueStorage does, we need to return the enum values as keys
 	// instead of the enum keys
 	dictConfig := map[string]interface{}{}
-	for key, value := range m.Config {
+	for key, value := range a.config {
 		dictConfig[string(key)] = value
 	}
 
 	return dictConfig
 }
 
-func (m *AzureKeyValueStorage) SaveStorage(updatedConfig map[string]interface{}) {}
+func (a *AzureKeyValueStorage) SaveStorage(updatedConfig map[string]interface{}) {}
 
-func (m *AzureKeyValueStorage) Get(key ConfigKey) string {
-	if val, ok := m.Config[key]; ok {
+func (a *AzureKeyValueStorage) Get(key ConfigKey) string {
+	if val, ok := a.config[key]; ok {
 		return val
 	}
 	return ""
 }
 
-func (m *AzureKeyValueStorage) Set(key ConfigKey, value interface{}) map[string]interface{} {
+func (a *AzureKeyValueStorage) Set(key ConfigKey, value interface{}) map[string]interface{} {
 	switch v := value.(type) {
 	case string:
-		m.Config[key] = v
-		return m.ReadStorage()
+		a.config[key] = v
+		return a.ReadStorage()
 	default:
 		klog.Error(fmt.Sprintf("Unknown value for ConfigKey: %s, Value: %v", string(key), v))
 	}
 	return nil
 }
 
-func (m *AzureKeyValueStorage) Delete(key ConfigKey) map[string]interface{} {
-	if _, found := m.Config[key]; found {
-		delete(m.Config, key)
+func (a *AzureKeyValueStorage) Delete(key ConfigKey) map[string]interface{} {
+	if _, found := a.config[key]; found {
+		delete(a.config, key)
 		klog.Debug("Removed key: " + key)
 	} else {
 		klog.Warning(fmt.Sprintf("No key '%s' was found in config", string(key)))
 	}
-	return m.ReadStorage()
+	return a.ReadStorage()
 }
 
-func (m *AzureKeyValueStorage) DeleteAll() map[string]interface{} {
-	m.Config = map[ConfigKey]string{}
-	return m.ReadStorage()
+func (a *AzureKeyValueStorage) DeleteAll() map[string]interface{} {
+	a.config = map[ConfigKey]string{}
+	return a.ReadStorage()
 }
 
-func (m *AzureKeyValueStorage) Contains(key ConfigKey) bool {
-	_, found := m.Config[key]
+func (a *AzureKeyValueStorage) Contains(key ConfigKey) bool {
+	_, found := a.config[key]
 	return found
 }
 
-func (m *AzureKeyValueStorage) IsEmpty() bool {
-	return len(m.Config) == 0
+func (a *AzureKeyValueStorage) IsEmpty() bool {
+	return len(a.config) == 0
 }
