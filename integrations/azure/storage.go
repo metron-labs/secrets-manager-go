@@ -8,24 +8,42 @@ import (
 )
 
 func (a *AzureKeyValueStorage) ReadStorage() map[string]interface{} {
-	dictConfig := map[string]interface{}{}
-	for key, value := range a.config {
-		dictConfig[string(key)] = value
+	if err := a.loadConfig(); err != nil {
+		logger.Errorf("%s", fmt.Sprintf("Failed to load config: %v", err))
+		return nil
 	}
-	return dictConfig
+	convertedConfig := make(map[string]interface{})
+	for k, v := range a.config {
+		convertedConfig[string(k)] = v
+	}
+	return convertedConfig
 }
 
-func (a *AzureKeyValueStorage) SaveStorage(updatedConfig map[string]interface{}) {}
+func (a *AzureKeyValueStorage) SaveStorage(updatedConfig map[string]interface{}) {
+	convertedConfig := make(map[core.ConfigKey]interface{})
+	for k, v := range updatedConfig {
+		if strVal, ok := v.(string); ok {
+			convertedConfig[core.ConfigKey(k)] = strVal
+		}
+	}
+
+	if err := a.saveConfig(convertedConfig); err != nil {
+		logger.Errorf("%s", fmt.Sprintf("Failed to save config: %v", err))
+	}
+}
 
 func (a *AzureKeyValueStorage) Get(key core.ConfigKey) string {
 	if val, ok := a.config[key]; ok {
-		return val
+		if strVal, ok := val.(string); ok {
+			return strVal
+		}
+		logger.Errorf("%s", fmt.Sprintf("Invalid type for key '%s': %v", key, val))
+		return ""
 	}
 	return ""
 }
 
 func (a *AzureKeyValueStorage) Set(key core.ConfigKey, value interface{}) map[string]interface{} {
-	logger := logger.NewDefaultLogger()
 	switch v := value.(type) {
 	case string:
 		a.config[key] = v
@@ -37,10 +55,10 @@ func (a *AzureKeyValueStorage) Set(key core.ConfigKey, value interface{}) map[st
 }
 
 func (a *AzureKeyValueStorage) Delete(key core.ConfigKey) map[string]interface{} {
-	logger := logger.NewDefaultLogger()
 	if _, found := a.config[key]; found {
 		delete(a.config, key)
 		logger.Debugf("%s", "Removed key: "+string(key))
+		a.saveConfig(a.config)
 	} else {
 		logger.Warn("%s", fmt.Sprintf("No key '%s' was found in config", string(key)))
 	}
@@ -48,7 +66,7 @@ func (a *AzureKeyValueStorage) Delete(key core.ConfigKey) map[string]interface{}
 }
 
 func (a *AzureKeyValueStorage) DeleteAll() map[string]interface{} {
-	a.config = map[core.ConfigKey]string{}
+	a.config = map[core.ConfigKey]interface{}{}
 	return a.ReadStorage()
 }
 

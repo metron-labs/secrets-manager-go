@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -24,6 +25,9 @@ type DefaultLogger struct {
 	debugLogger *log.Logger
 }
 
+// Global default logger instance
+var defaultLogger = NewDefaultLogger()
+
 // NewDefaultLogger creates a new instance of DefaultLogger.
 func NewDefaultLogger() *DefaultLogger {
 	return &DefaultLogger{
@@ -44,31 +48,31 @@ func formatLog(level, message string) string {
 }
 
 // Info logs an informational message.
-func (l *DefaultLogger) Info(message string, meta ...interface{}) {
-	l.infoLogger.Println(formatLog("INFO", message))
+func Info(message string, meta ...interface{}) {
+	defaultLogger.infoLogger.Println(formatLog("INFO", fmt.Sprintf(message, meta...)))
 }
 
 // Warn logs a warning message.
-func (l *DefaultLogger) Warn(message string, meta ...interface{}) {
-	l.warnLogger.Println(formatLog("WARNING", message))
+func Warn(message string, meta ...interface{}) {
+	defaultLogger.warnLogger.Println(formatLog("WARNING", message))
 }
 
 // Error logs an error message.
-func (l *DefaultLogger) Error(message string, meta ...interface{}) {
-	l.errorLogger.Println(formatLog("ERROR", message))
+func Error(message string, meta ...interface{}) {
+	defaultLogger.errorLogger.Println(formatLog("ERROR", message))
 }
 
 // Errorf logs a formatted error message.
-func (l *DefaultLogger) Errorf(format string, args ...interface{}) {
-	l.errorLogger.Println(formatLog("ERROR", format))
+func Errorf(message string, args ...interface{}) {
+	defaultLogger.errorLogger.Println(formatLog("ERROR", fmt.Sprintf(message, args...)))
 }
 
 // Debug logs a debug message.
-func (l *DefaultLogger) Debug(message string, meta ...interface{}) {
-	l.debugLogger.Println(formatLog("DEBUG", message))
+func Debug(message string, meta ...interface{}) {
+	defaultLogger.debugLogger.Println(formatLog("DEBUG", message))
 }
 
 // Debugf logs a debug message.
-func (l *DefaultLogger) Debugf(message string, meta ...interface{}) {
-	l.debugLogger.Println(formatLog("DEBUG", message))
+func Debugf(message string, meta ...interface{}) {
+	defaultLogger.debugLogger.Println(formatLog("DEBUG", message))
 }

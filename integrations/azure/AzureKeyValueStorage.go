@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
 	"github.com/keeper-security/secrets-manager-go/core"
@@ -23,15 +24,15 @@ type AzureConfig struct {
 
 type AzureKeyValueStorage struct {
 	configFileLocation  string
-	config              map[core.ConfigKey]string
+	config              map[core.ConfigKey]interface{}
 	lastSavedConfigHash string
 	cryptoClient        *azkeys.Client
 	keyName             string
 	keyVersion          string
+	azureConfig         *AzureConfig
 }
 
 func NewAzureKeyValueStorage(configFileLocation string, azSessionConfig *AzureConfig) *AzureKeyValueStorage {
-	log := logger.NewDefaultLogger()
 	if configFileLocation == "" {
 		configFileLocation = os.Getenv("KSM_CONFIG_FILE")
 		if configFileLocation == "" {
@@ -39,34 +40,30 @@ func NewAzureKeyValueStorage(configFileLocation string, azSessionConfig *AzureCo
 		}
 	}
 
-	var cred *azidentity.ClientSecretCredential
-	if azSessionConfig != nil && azSessionConfig.TenantID != "" && azSessionConfig.ClientID != "" && azSessionConfig.ClientSecret != "" {
-		var err error
-		cred, err = azidentity.NewClientSecretCredential(azSessionConfig.TenantID, azSessionConfig.ClientID, azSessionConfig.ClientSecret, nil)
-		if err != nil {
-			log.Errorf("Failed to create client secret credential: %v", err)
-			return nil
-		}
-	}
-
-	baseURL, keyName, keyVersion, err := extractKeyDetails(azSessionConfig.KeyURL)
+	credential, err := fetchCredentials(azSessionConfig)
 	if err != nil {
 		return nil
 	}
 
-	client, err := azkeys.NewClient(baseURL, cred, nil)
+	baseURL, keyName, keyVersion, err := fetchKeyDetails(azSessionConfig.KeyURL)
 	if err != nil {
-		log.Error("Failed to create Azure Key Vault client: %v", err)
+		return nil
+	}
+
+	client, err := azkeys.NewClient(baseURL, credential, nil)
+	if err != nil {
+		logger.Errorf("Failed to create Azure Key Vault client: %v", err)
 		return nil
 	}
 
 	azureDetails := &AzureKeyValueStorage{
 		configFileLocation:  configFileLocation,
-		config:              make(map[core.ConfigKey]string),
+		config:              make(map[core.ConfigKey]interface{}),
 		lastSavedConfigHash: "",
 		cryptoClient:        client,
 		keyName:             keyName,
 		keyVersion:          keyVersion,
+		azureConfig:         azSessionConfig,
 	}
 
 	err = azureDetails.loadConfig()
@@ -78,29 +75,29 @@ func NewAzureKeyValueStorage(configFileLocation string, azSessionConfig *AzureCo
 }
 
 func (s *AzureKeyValueStorage) loadConfig() error {
-	logger := logger.NewDefaultLogger()
 	if err := s.createConfigFileIfMissing(); err != nil {
 		return err
 	}
 
 	contents, err := os.ReadFile(s.configFileLocation)
 	if err != nil {
-		logger.Error("Failed to load config file %s: %s", s.configFileLocation, err.Error())
+		logger.Errorf("Failed to load config file %s: %s", s.configFileLocation, err.Error())
 		return fmt.Errorf("failed to load config file %s", s.configFileLocation)
 	}
 
 	if len(contents) == 0 {
-		logger.Error("Empty config file %s", s.configFileLocation)
+		logger.Errorf("Empty config file %s", s.configFileLocation)
+		contents = []byte("{}")
 	}
 
-	var config map[core.ConfigKey]string
+	var config map[core.ConfigKey]interface{}
 	var jsonError error
 	var decryptionError bool
 
 	configData := string(contents)
 	if err := json.Unmarshal([]byte(configData), &config); err == nil {
 		s.config = config
-		if err := s.saveConfig(config, false); err != nil {
+		if err := s.saveConfig(config); err != nil {
 			return err
 		}
 
@@ -129,13 +126,13 @@ func (s *AzureKeyValueStorage) loadConfig() error {
 		}
 
 		s.config = config
+
 		configJsonBytes, err := json.Marshal(config)
 		if err != nil {
 			return fmt.Errorf("failed to marshal config: %w", err)
 		}
 
-		configJson = string(configJsonBytes)
-		s.lastSavedConfigHash = s.createHash([]byte(configJson))
+		s.lastSavedConfigHash = s.createHash(configJsonBytes)
 	}
 
 	if jsonError != nil && decryptionError {
@@ -155,7 +152,7 @@ func (s *AzureKeyValueStorage) createConfigFileIfMissing() error {
 			}
 		}
 
-		blob, err := encryptBuffer(s.cryptoClient, s.keyName, s.keyVersion, "")
+		blob, err := encryptBuffer(s.cryptoClient, s.keyName, s.keyVersion, []byte("{}"))
 		if err != nil {
 			return fmt.Errorf("failed to encrypt empty configuration: %w", err)
 		}
@@ -166,16 +163,16 @@ func (s *AzureKeyValueStorage) createConfigFileIfMissing() error {
 
 		fmt.Println("Config file created at:", s.configFileLocation)
 	} else {
-		fmt.Println("Config file already exists at:", s.configFileLocation)
+		logger.Info("Config file already exists at: %s", s.configFileLocation)
 	}
 
 	return nil
 }
 
-func (s *AzureKeyValueStorage) saveConfig(updatedConfig map[core.ConfigKey]string, force bool) error {
+func (s *AzureKeyValueStorage) saveConfig(updatedConfig map[core.ConfigKey]interface{}) error {
 	config := s.config
 	if config == nil {
-		config = make(map[core.ConfigKey]string)
+		config = make(map[core.ConfigKey]interface{})
 	}
 
 	configJson, err := json.MarshalIndent(config, "", "    ")
@@ -193,14 +190,14 @@ func (s *AzureKeyValueStorage) saveConfig(updatedConfig map[core.ConfigKey]strin
 
 		if updatedConfigHash != configHash {
 			configHash = updatedConfigHash
-			s.config = make(map[core.ConfigKey]string)
+			s.config = make(map[core.ConfigKey]interface{})
 			for k, v := range updatedConfig {
 				s.config[k] = fmt.Sprintf("%v", v)
 			}
 		}
 	}
 
-	if !force && configHash == s.lastSavedConfigHash {
+	if configHash == s.lastSavedConfigHash {
 		fmt.Println("Skipped config JSON save. No changes detected.")
 		return nil
 	}
@@ -209,7 +206,7 @@ func (s *AzureKeyValueStorage) saveConfig(updatedConfig map[core.ConfigKey]strin
 		return err
 	}
 
-	blob, err := encryptBuffer(s.cryptoClient, s.keyName, s.keyVersion, string(configJson))
+	blob, err := encryptBuffer(s.cryptoClient, s.keyName, s.keyVersion, configJson)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt config: %w", err)
 	}
@@ -225,4 +222,57 @@ func (s *AzureKeyValueStorage) saveConfig(updatedConfig map[core.ConfigKey]strin
 func (s *AzureKeyValueStorage) createHash(data []byte) string {
 	hash := md5.Sum(data)
 	return hex.EncodeToString(hash[:])
+}
+
+func (s *AzureKeyValueStorage) changeKey(newKeyURL string) (bool, error) {
+	oldKeyURL := s.azureConfig.KeyURL
+	oldCryptoClient := s.cryptoClient
+	baseURL, keyName, keyVersion, err := fetchKeyDetails(newKeyURL)
+	if err != nil {
+		logger.Errorf("Failed to extract key details from URL '%s': %v", newKeyURL, err)
+		return false, fmt.Errorf("failed to extract key details from URL '%s': %w", newKeyURL, err)
+	}
+
+	s.azureConfig.KeyURL = newKeyURL
+	s.keyName = keyName
+	s.keyVersion = keyVersion
+	cred, err := fetchCredentials(s.azureConfig)
+	if err != nil {
+		return false, err
+	}
+
+	client, err := azkeys.NewClient(baseURL, cred, nil)
+	if err != nil {
+		return false, fmt.Errorf("failed to create Azure Key Vault client: %w", err)
+	}
+
+	s.cryptoClient = client
+	if err := s.saveConfig(s.config); err != nil {
+		oldBaseURL, oldKeyName, oldKeyVersion, err := fetchKeyDetails(oldKeyURL)
+		s.azureConfig.KeyURL = oldBaseURL
+		s.keyName = oldKeyName
+		s.keyVersion = oldKeyVersion
+		s.cryptoClient = oldCryptoClient
+		logger.Errorf("Failed to change the key to '%s' for config '%s': %v", newKeyURL, s.configFileLocation, err)
+		return false, fmt.Errorf("failed to change the key for %s: %w", s.configFileLocation, err)
+	}
+
+	return true, nil
+}
+
+func fetchCredentials(azSessionConfig *AzureConfig) (azcore.TokenCredential, error) {
+	var secretCredentials azcore.TokenCredential
+	var err error
+	if azSessionConfig != nil && azSessionConfig.TenantID != "" && azSessionConfig.ClientID != "" && azSessionConfig.ClientSecret != "" {
+		secretCredentials, err = azidentity.NewClientSecretCredential(azSessionConfig.TenantID, azSessionConfig.ClientID, azSessionConfig.ClientSecret, nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create client secret credential: %v", err)
+		}
+	} else {
+		secretCredentials, err = azidentity.NewDefaultAzureCredential(nil)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create default Azure credential: %v", err)
+		}
+	}
+	return secretCredentials, nil
 }
