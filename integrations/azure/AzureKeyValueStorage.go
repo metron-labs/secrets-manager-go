@@ -94,8 +94,7 @@ func (s *AzureKeyValueStorage) loadConfig() error {
 	var jsonError error
 	var decryptionError bool
 
-	configData := string(contents)
-	if err := json.Unmarshal([]byte(configData), &config); err == nil {
+	if err := json.Unmarshal(contents, &config); err == nil {
 		s.config = config
 		if err := s.saveConfig(config); err != nil {
 			return err
