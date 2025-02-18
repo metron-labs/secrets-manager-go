@@ -175,7 +175,7 @@ func (s *AzureKeyValueStorage) saveConfig(updatedConfig map[core.ConfigKey]inter
 		config = make(map[core.ConfigKey]interface{})
 	}
 
-	configJson, err := json.MarshalIndent(config, "", "    ")
+	configJson, err := json.Marshal(config)
 	if err != nil {
 		return fmt.Errorf("failed to marshal current config: %w", err)
 	}
