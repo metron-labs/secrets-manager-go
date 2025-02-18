@@ -9,8 +9,6 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
-	"net/url"
-	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
@@ -70,10 +68,6 @@ func encryptBuffer(azureKvStorageCryptoClient *azkeys.Client, keyName string, ke
 }
 
 func decryptBuffer(azureKeyValueStorageCryptoClient *azkeys.Client, keyName string, keyVersion string, cipherText []byte) ([]byte, error) {
-	if len(cipherText) < len(BLOB_HEADER)+KEY_SIZE {
-		return nil, fmt.Errorf("invalid encrypted data")
-	}
-
 	if !bytes.HasPrefix(cipherText, []byte(BLOB_HEADER)) {
 		return nil, fmt.Errorf("invalid BLOB_HEADER")
 	}
@@ -113,23 +107,4 @@ func decryptBuffer(azureKeyValueStorageCryptoClient *azkeys.Client, keyName stri
 	}
 
 	return plaintext, nil
-}
-
-func fetchKeyDetails(keyURL string) (string, string, string, error) {
-	if keyURL == "" {
-		return "", "", "", fmt.Errorf("key URL is empty")
-	}
-
-	parsedURL, err := url.Parse(keyURL)
-	if err != nil {
-		return "", "", "", fmt.Errorf("failed to parse key URL: %v", err)
-	}
-	pathSegments := strings.Split(strings.Trim(parsedURL.Path, "/"), "/")
-	if len(pathSegments) < 3 {
-		return "", "", "", fmt.Errorf("invalid key URL format")
-	}
-	vaultURL := fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host)
-	keyName := pathSegments[1]
-	keyVersion := pathSegments[2]
-	return vaultURL, keyName, keyVersion, nil
 }

@@ -6,8 +6,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
@@ -267,24 +269,42 @@ func fetchCredentials(azSessionConfig *AzureConfig) (azcore.TokenCredential, err
 }
 
 func (s *AzureKeyValueStorage) encyptConfig(config []byte) error {
+	var blob []byte
+	var err error
+
 	if config == nil {
-		blob, err := encryptBuffer(s.cryptoClient, s.keyName, s.keyVersion, []byte("{}"))
+		blob, err = encryptBuffer(s.cryptoClient, s.keyName, s.keyVersion, []byte("{}"))
 		if err != nil {
 			return fmt.Errorf("failed to encrypt empty configuration: %w", err)
 		}
-
-		if err := os.WriteFile(s.configFileLocation, blob, 0644); err != nil {
-			return fmt.Errorf("failed to write config file %s: %w", s.configFileLocation, err)
-		}
 	} else {
-		blob, err := encryptBuffer(s.cryptoClient, s.keyName, s.keyVersion, config)
+		blob, err = encryptBuffer(s.cryptoClient, s.keyName, s.keyVersion, config)
 		if err != nil {
 			return fmt.Errorf("failed to encrypt configuration: %w", err)
 		}
+	}
 
-		if err := os.WriteFile(s.configFileLocation, blob, 0644); err != nil {
-			return fmt.Errorf("failed to write config file %s: %w", s.configFileLocation, err)
-		}
+	if err := os.WriteFile(s.configFileLocation, blob, 0644); err != nil {
+		return fmt.Errorf("failed to write config file %s: %w", s.configFileLocation, err)
 	}
 	return nil
+}
+
+func fetchKeyDetails(keyURL string) (string, string, string, error) {
+	if keyURL == "" {
+		return "", "", "", fmt.Errorf("key URL is empty")
+	}
+
+	parsedURL, err := url.Parse(keyURL)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to parse key URL: %v", err)
+	}
+	pathSegments := strings.Split(strings.Trim(parsedURL.Path, "/"), "/")
+	if len(pathSegments) < 3 {
+		return "", "", "", fmt.Errorf("invalid key URL format")
+	}
+	vaultURL := fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host)
+	keyName := pathSegments[1]
+	keyVersion := pathSegments[2]
+	return vaultURL, keyName, keyVersion, nil
 }
