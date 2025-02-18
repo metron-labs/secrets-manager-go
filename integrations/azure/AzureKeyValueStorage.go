@@ -157,7 +157,7 @@ func (s *AzureKeyValueStorage) createConfigFileIfMissing() error {
 		}
 	}
 
-	if err := s.encyptConfig([]byte("{}")); err != nil {
+	if err := s.encryptConfig([]byte("{}")); err != nil {
 		return err
 	}
 
@@ -202,7 +202,7 @@ func (s *AzureKeyValueStorage) saveConfig(updatedConfig map[core.ConfigKey]inter
 		return err
 	}
 
-	if err := s.encyptConfig(configJson); err != nil {
+	if err := s.encryptConfig(configJson); err != nil {
 		return err
 	}
 
@@ -268,7 +268,7 @@ func fetchCredentials(azSessionConfig *AzureConfig) (azcore.TokenCredential, err
 	return secretCredentials, nil
 }
 
-func (s *AzureKeyValueStorage) encyptConfig(config []byte) error {
+func (s *AzureKeyValueStorage) encryptConfig(config []byte) error {
 	var blob []byte
 	var err error
 
