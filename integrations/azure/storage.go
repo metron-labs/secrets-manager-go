@@ -65,6 +65,7 @@ func (a *AzureKeyValueStorage) Delete(key core.ConfigKey) map[string]interface{}
 
 func (a *AzureKeyValueStorage) DeleteAll() map[string]interface{} {
 	a.config = map[core.ConfigKey]interface{}{}
+	a.saveConfig(a.config)
 	return a.ReadStorage()
 }
 
