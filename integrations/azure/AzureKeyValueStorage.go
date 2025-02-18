@@ -76,6 +76,10 @@ func NewAzureKeyValueStorage(configFileLocation string, azSessionConfig *AzureCo
 }
 
 func (s *AzureKeyValueStorage) loadConfig() error {
+	var config map[core.ConfigKey]interface{}
+	var jsonError error
+	var decryptionError bool
+
 	if err := s.createConfigFileIfMissing(); err != nil {
 		return err
 	}
@@ -87,13 +91,9 @@ func (s *AzureKeyValueStorage) loadConfig() error {
 	}
 
 	if len(contents) == 0 {
-		logger.Errorf("Empty config file %s", s.configFileLocation)
+		logger.Errorf("Config file is empty %s", s.configFileLocation)
 		contents = []byte("{}")
 	}
-
-	var config map[core.ConfigKey]interface{}
-	var jsonError error
-	var decryptionError bool
 
 	if err := json.Unmarshal(contents, &config); err == nil {
 		s.config = config
@@ -119,14 +119,13 @@ func (s *AzureKeyValueStorage) loadConfig() error {
 			return fmt.Errorf("failed to decrypt config file %s", s.configFileLocation)
 		}
 
-		if err := json.Unmarshal([]byte(configJson), &config); err != nil {
+		if err := json.Unmarshal(configJson, &config); err != nil {
 			decryptionError = true
 			logger.Error("Failed to parse decrypted config file: %s", err.Error())
 			return fmt.Errorf("failed to parse decrypted config file %s", s.configFileLocation)
 		}
 
 		s.config = config
-
 		configJsonBytes, err := json.Marshal(config)
 		if err != nil {
 			return fmt.Errorf("failed to marshal config: %w", err)
@@ -156,13 +155,8 @@ func (s *AzureKeyValueStorage) createConfigFileIfMissing() error {
 		}
 	}
 
-	blob, err := encryptBuffer(s.cryptoClient, s.keyName, s.keyVersion, []byte("{}"))
-	if err != nil {
-		return fmt.Errorf("failed to encrypt empty configuration: %w", err)
-	}
-
-	if err := os.WriteFile(s.configFileLocation, blob, 0644); err != nil {
-		return fmt.Errorf("failed to write config file %s: %w", s.configFileLocation, err)
+	if err := s.encyptConfig([]byte("{}")); err != nil {
+		return err
 	}
 
 	logger.Infof("Config file created at: %s", s.configFileLocation)
@@ -182,12 +176,12 @@ func (s *AzureKeyValueStorage) saveConfig(updatedConfig map[core.ConfigKey]inter
 	configHash := s.createHash(configJson)
 
 	if len(updatedConfig) > 0 {
-		updatedConfigJson, err := json.MarshalIndent(updatedConfig, "", "    ")
+		updatedConfigJson, err := json.Marshal(updatedConfig)
 		if err != nil {
 			return fmt.Errorf("failed to marshal updated config: %w", err)
 		}
-		updatedConfigHash := s.createHash(updatedConfigJson)
 
+		updatedConfigHash := s.createHash(updatedConfigJson)
 		if updatedConfigHash != configHash {
 			configHash = updatedConfigHash
 			s.config = make(map[core.ConfigKey]interface{})
@@ -206,13 +200,8 @@ func (s *AzureKeyValueStorage) saveConfig(updatedConfig map[core.ConfigKey]inter
 		return err
 	}
 
-	blob, err := encryptBuffer(s.cryptoClient, s.keyName, s.keyVersion, configJson)
-	if err != nil {
-		return fmt.Errorf("failed to encrypt config: %w", err)
-	}
-
-	if err := os.WriteFile(s.configFileLocation, blob, 0644); err != nil {
-		return fmt.Errorf("failed to write config file %s: %w", s.configFileLocation, err)
+	if err := s.encyptConfig(configJson); err != nil {
+		return err
 	}
 
 	s.lastSavedConfigHash = configHash
@@ -266,13 +255,36 @@ func fetchCredentials(azSessionConfig *AzureConfig) (azcore.TokenCredential, err
 	if azSessionConfig != nil && azSessionConfig.TenantID != "" && azSessionConfig.ClientID != "" && azSessionConfig.ClientSecret != "" {
 		secretCredentials, err = azidentity.NewClientSecretCredential(azSessionConfig.TenantID, azSessionConfig.ClientID, azSessionConfig.ClientSecret, nil)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create client secret credential: %v", err)
+			return nil, fmt.Errorf("failed to create client secret credential: %w", err)
 		}
 	} else {
 		secretCredentials, err = azidentity.NewDefaultAzureCredential(nil)
 		if err != nil {
-			return nil, fmt.Errorf("failed to create default Azure credential: %v", err)
+			return nil, fmt.Errorf("failed to create default Azure credential: %w", err)
 		}
 	}
 	return secretCredentials, nil
+}
+
+func (s *AzureKeyValueStorage) encyptConfig(config []byte) error {
+	if config == nil {
+		blob, err := encryptBuffer(s.cryptoClient, s.keyName, s.keyVersion, []byte("{}"))
+		if err != nil {
+			return fmt.Errorf("failed to encrypt empty configuration: %w", err)
+		}
+
+		if err := os.WriteFile(s.configFileLocation, blob, 0644); err != nil {
+			return fmt.Errorf("failed to write config file %s: %w", s.configFileLocation, err)
+		}
+	} else {
+		blob, err := encryptBuffer(s.cryptoClient, s.keyName, s.keyVersion, config)
+		if err != nil {
+			return fmt.Errorf("failed to encrypt configuration: %w", err)
+		}
+
+		if err := os.WriteFile(s.configFileLocation, blob, 0644); err != nil {
+			return fmt.Errorf("failed to write config file %s: %w", s.configFileLocation, err)
+		}
+	}
+	return nil
 }
