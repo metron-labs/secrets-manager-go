@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/kms/types"
@@ -32,8 +33,9 @@ type AWSKeyVaultStorage struct {
 
 func NewAWSKeyValueStorage(configFileLocation string, KeyARN string, awsSessionConfig *AWSConfig) *AWSKeyVaultStorage {
 	if configFileLocation == "" {
-		configFileLocation = os.Getenv("KSM_CONFIG_FILE")
-		if configFileLocation == "" {
+		if envConfigFileLocation, ok := os.LookupEnv("KSM_CONFIG_FILE"); ok {
+			configFileLocation = envConfigFileLocation
+		} else {
 			configFileLocation = core.DEFAULT_CONFIG_PATH
 		}
 	}
@@ -57,7 +59,7 @@ func NewAWSKeyValueStorage(configFileLocation string, KeyARN string, awsSessionC
 		keyARN:              KeyARN,
 	}
 
-	keyData, err := awsDetails.GetKeyDetails()
+	keyData, err := awsDetails.getKeyDetails()
 	if err != nil && keyData.KeyMetadata.KeyUsage != types.KeyUsageTypeEncryptDecrypt {
 		logger.Errorf("Failed to create client secret credential: %v", err)
 		return nil
@@ -68,16 +70,6 @@ func NewAWSKeyValueStorage(configFileLocation string, KeyARN string, awsSessionC
 		return nil
 	}
 	return awsDetails
-}
-
-func getConfig(awsSessionConfig *AWSConfig) (*aws.Config, error) {
-	if awsSessionConfig.ClientID != "" && awsSessionConfig.ClientSecret != "" && awsSessionConfig.Region != "" {
-		return &aws.Config{
-			Credentials: credentials.NewStaticCredentialsProvider(awsSessionConfig.ClientID, awsSessionConfig.ClientSecret, ""),
-			Region:      awsSessionConfig.Region,
-		}, nil
-	}
-	return nil, fmt.Errorf("AWS ClientID, ClientSecret or Region is missing")
 }
 
 func (a *AWSKeyVaultStorage) loadConfig() error {
@@ -118,7 +110,7 @@ func (a *AWSKeyVaultStorage) loadConfig() error {
 	}
 
 	if jsonError != nil {
-		keydata, err := a.GetKeyDetails()
+		keydata, err := a.getKeyDetails()
 		if err != nil {
 		}
 
@@ -188,19 +180,82 @@ func (a *AWSKeyVaultStorage) saveConfig(updatedConfig map[core.ConfigKey]interfa
 		return err
 	}
 
-	keydata, err := a.GetKeyDetails()
+	if err := a.encryptConfig(configJson); err != nil {
+		return err
+	}
+
+	a.lastSavedConfigHash = configHash
+	return nil
+}
+
+func (a *AWSKeyVaultStorage) createConfigFileIfMissing() error {
+	if _, err := os.Stat(a.configFileLocation); !os.IsNotExist(err) {
+		logger.Infof("Config file already exists at: %s", a.configFileLocation)
+		return nil
+	}
+
+	dir := filepath.Dir(a.configFileLocation)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", dir, err)
+		}
+	}
+
+	if err := a.encryptConfig([]byte("{}")); err != nil {
+		return err
+	}
+
+	logger.Infof("Config file created at: %s", a.configFileLocation)
+	return nil
+}
+
+func (a *AWSKeyVaultStorage) getKeyDetails() (*kms.DescribeKeyOutput, error) {
+	keyDetails, err := a.kmsClient.DescribeKey(context.Background(), &kms.DescribeKeyInput{
+		KeyId: &a.keyARN,
+	})
+
+	if err != nil {
+		logger.Error("Failed to get key details: %v", err)
+		return nil, fmt.Errorf("failed to get key details: %w", err)
+	}
+
+	return keyDetails, nil
+}
+
+func (a *AWSKeyVaultStorage) createHash(config []byte) string {
+	hash := md5.Sum(config)
+	return hex.EncodeToString(hash[:])
+}
+
+func getConfig(awsSessionConfig *AWSConfig) (*aws.Config, error) {
+	if awsSessionConfig.ClientID != "" && awsSessionConfig.ClientSecret != "" && awsSessionConfig.Region != "" {
+		return &aws.Config{
+			Credentials: credentials.NewStaticCredentialsProvider(awsSessionConfig.ClientID, awsSessionConfig.ClientSecret, ""),
+			Region:      awsSessionConfig.Region,
+		}, nil
+	} else {
+		cfg, err := config.LoadDefaultConfig(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("failed to load default config: %w", err)
+		}
+		return &cfg, nil
+	}
+}
+
+func (a *AWSKeyVaultStorage) encryptConfig(config []byte) error {
+	keydata, err := a.getKeyDetails()
 	if err != nil {
 		return err
 	}
 
 	var blob []byte
 	if keydata.KeyMetadata.KeySpec == types.KeySpecSymmetricDefault {
-		blob, err = encryptSymmetric(a.kmsClient, a.keyARN, configJson)
+		blob, err = encryptSymmetric(a.kmsClient, a.keyARN, config)
 		if err != nil {
 			return fmt.Errorf("failed to encrypt config: %w", err)
 		}
-	} else if keydata.KeyMetadata.KeySpec == types.KeySpecRsa2048 || keydata.KeyMetadata.KeySpec == types.KeySpecRsa3072 || keydata.KeyMetadata.KeySpec == types.KeySpecRsa4096 {
-		blob, err = encryptAsymmetric(a.kmsClient, a.keyARN, configJson)
+	} else {
+		blob, err = encryptAsymmetric(a.kmsClient, a.keyARN, config)
 		if err != nil {
 			return fmt.Errorf("failed to encrypt config: %w", err)
 		}
@@ -210,61 +265,6 @@ func (a *AWSKeyVaultStorage) saveConfig(updatedConfig map[core.ConfigKey]interfa
 		return fmt.Errorf("failed to write config file %s: %w", a.configFileLocation, err)
 	}
 
-	a.lastSavedConfigHash = configHash
+	logger.Debug("Config file created at: ", a.configFileLocation)
 	return nil
-}
-
-func (a *AWSKeyVaultStorage) createConfigFileIfMissing() error {
-	if _, err := os.Stat(a.configFileLocation); os.IsNotExist(err) {
-		dir := filepath.Dir(a.configFileLocation)
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
-			if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-				return fmt.Errorf("failed to create directory %s: %w", dir, err)
-			}
-		}
-
-		keydata, err := a.GetKeyDetails()
-		if err != nil {
-			return err
-		}
-
-		var blob []byte
-		if keydata.KeyMetadata.KeySpec == types.KeySpecSymmetricDefault {
-			blob, err = encryptSymmetric(a.kmsClient, a.keyARN, []byte("{}"))
-			if err != nil {
-				return fmt.Errorf("failed to encrypt config: %w", err)
-			}
-		} else if keydata.KeyMetadata.KeySpec == types.KeySpecRsa2048 || keydata.KeyMetadata.KeySpec == types.KeySpecRsa3072 || keydata.KeyMetadata.KeySpec == types.KeySpecRsa4096 {
-			blob, err = encryptAsymmetric(a.kmsClient, a.keyARN, []byte("{}"))
-			if err != nil {
-				return fmt.Errorf("failed to encrypt config: %w", err)
-			}
-		}
-
-		if err := os.WriteFile(a.configFileLocation, blob, 0644); err != nil {
-			return fmt.Errorf("failed to write config file %s: %w", a.configFileLocation, err)
-		}
-
-		fmt.Println("Config file created at:", a.configFileLocation)
-	} else {
-		fmt.Println("Config file already exists at:", a.configFileLocation)
-	}
-
-	return nil
-}
-
-func (a *AWSKeyVaultStorage) GetKeyDetails() (*kms.DescribeKeyOutput, error) {
-	keyDetails, err := a.kmsClient.DescribeKey(context.Background(), &kms.DescribeKeyInput{
-		KeyId: &a.keyARN,
-	})
-	if err != nil {
-		logger.Error("Failed to get key details: %v", err)
-		return nil, fmt.Errorf("failed to get key details: %v", err)
-	}
-	return keyDetails, nil
-}
-
-func (s *AWSKeyVaultStorage) createHash(data []byte) string {
-	hash := md5.Sum(data)
-	return hex.EncodeToString(hash[:])
 }

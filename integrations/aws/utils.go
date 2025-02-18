@@ -16,31 +16,17 @@ import (
 
 const (
 	BLOB_HEADER = "\xff\xff"
-	KEY_SIZE    = 32
+	KEY_SIZE    = 384
 	NONCE_SIZE  = 12
 )
 
-func GetKeyDetails(client *kms.Client, keyARN string, clientID string, clientSecret string, region string) (*string, *string, error) {
-	result, err := client.DescribeKey(context.Background(), &kms.DescribeKeyInput{
-		KeyId: &keyARN,
-	})
-
-	if err != nil {
-		fmt.Println("Error describing key:", err)
-		return nil, nil, fmt.Errorf("error fetching key details %v", err)
-	}
-
-	return (*string)(&result.KeyMetadata.KeySpec), (*string)(&result.KeyMetadata.KeyUsage), nil
-
-}
-
 func encryptSymmetric(client *kms.Client, keyId string, message []byte) ([]byte, error) {
 	if keyId == "" {
-		return nil, fmt.Errorf("keyId is required")
+		return nil, fmt.Errorf("keyId is empty")
 	}
 
 	if len(message) == 0 {
-		return nil, fmt.Errorf("message is required")
+		return nil, fmt.Errorf("message is empty")
 	}
 
 	cipherText, err := client.Encrypt(context.Background(), &kms.EncryptInput{
@@ -57,7 +43,7 @@ func encryptSymmetric(client *kms.Client, keyId string, message []byte) ([]byte,
 
 func decryptSymmetric(client *kms.Client, keyId string, cipherText []byte) ([]byte, error) {
 	if keyId == "" {
-		return nil, fmt.Errorf("keyId is required")
+		return nil, fmt.Errorf("keyId is empty")
 	}
 
 	plainText, err := client.Decrypt(context.Background(), &kms.DecryptInput{
@@ -73,10 +59,10 @@ func decryptSymmetric(client *kms.Client, keyId string, cipherText []byte) ([]by
 
 func encryptAsymmetric(client *kms.Client, keyId string, message []byte) ([]byte, error) {
 	if keyId == "" {
-		return nil, fmt.Errorf("keyId is required")
+		return nil, fmt.Errorf("keyId is empty")
 	}
 
-	key := make([]byte, KEY_SIZE)
+	key := make([]byte, 32)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
 		return nil, err
 	}
@@ -107,7 +93,7 @@ func encryptAsymmetric(client *kms.Client, keyId string, message []byte) ([]byte
 	})
 	if err != nil {
 		logger.Error("Failed to encrypt asymmetric key: %v", err)
-		return nil, fmt.Errorf("failed to encrypt asymmetric key: %v", err)
+		return nil, fmt.Errorf("failed to encrypt asymmetric key: %w", err)
 	}
 
 	var blob []byte
@@ -122,10 +108,7 @@ func encryptAsymmetric(client *kms.Client, keyId string, message []byte) ([]byte
 
 func decryptAsymmetric(client *kms.Client, keyId string, cipherText []byte) ([]byte, error) {
 	if keyId == "" {
-		return nil, fmt.Errorf("keyId is required")
-	}
-	if len(cipherText) < len(BLOB_HEADER)+KEY_SIZE {
-		return nil, fmt.Errorf("invalid encrypted data")
+		return nil, fmt.Errorf("keyId is empty")
 	}
 
 	if !bytes.HasPrefix(cipherText, []byte(BLOB_HEADER)) {
@@ -141,7 +124,7 @@ func decryptAsymmetric(client *kms.Client, keyId string, cipherText []byte) ([]b
 	})
 	if err != nil {
 		logger.Error("Failed to decrypt asymmetric key: %v", err)
-		return nil, fmt.Errorf("failed to decrypt asymmetric key: %v", err)
+		return nil, fmt.Errorf("failed to decrypt asymmetric key: %w", err)
 	}
 
 	block, err := aes.NewCipher(decryptedKey.Plaintext)
@@ -160,6 +143,7 @@ func decryptAsymmetric(client *kms.Client, keyId string, cipherText []byte) ([]b
 	ciphertext = append(ciphertext, tag...)
 	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
+		logger.Errorf("Data tampering detected or decryption failed: %v", err)
 		return nil, err
 	}
 

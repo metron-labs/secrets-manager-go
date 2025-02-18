@@ -1,6 +1,7 @@
 package logger
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"time"
@@ -47,8 +48,8 @@ func formatLog(level, message string) string {
 }
 
 // Info logs an informational message.
-func Info(message string, meta ...interface{}) {
-	defaultLogger.infoLogger.Println(formatLog("INFO", message))
+func Infof(message string, meta ...interface{}) {
+	defaultLogger.infoLogger.Println(formatLog("INFO", fmt.Sprintf(message, meta...)))
 }
 
 // Warn logs a warning message.
@@ -62,8 +63,8 @@ func Error(message string, meta ...interface{}) {
 }
 
 // Errorf logs a formatted error message.
-func Errorf(format string, args ...interface{}) {
-	defaultLogger.errorLogger.Println(formatLog("ERROR", format))
+func Errorf(message string, args ...interface{}) {
+	defaultLogger.errorLogger.Println(formatLog("ERROR", fmt.Sprintf(message, args...)))
 }
 
 // Debug logs a debug message.
