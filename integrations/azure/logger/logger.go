@@ -48,7 +48,7 @@ func formatLog(level, message string) string {
 }
 
 // Info logs an informational message.
-func Info(message string, meta ...interface{}) {
+func Infof(message string, meta ...interface{}) {
 	defaultLogger.infoLogger.Println(formatLog("INFO", fmt.Sprintf(message, meta...)))
 }
 
@@ -74,5 +74,5 @@ func Debug(message string, meta ...interface{}) {
 
 // Debugf logs a debug message.
 func Debugf(message string, meta ...interface{}) {
-	defaultLogger.debugLogger.Println(formatLog("DEBUG", message))
+	defaultLogger.debugLogger.Println(formatLog("DEBUG", fmt.Sprintf(message, meta...)))
 }

@@ -108,6 +108,7 @@ func decryptBuffer(azureKeyValueStorageCryptoClient *azkeys.Client, keyName stri
 	ciphertext = append(ciphertext, tag...)
 	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
+		logger.Errorf("Data tampering detected or decryption failed: %v", err)
 		return nil, err
 	}
 
@@ -127,8 +128,8 @@ func fetchKeyDetails(keyURL string) (string, string, string, error) {
 	if len(pathSegments) < 3 {
 		return "", "", "", fmt.Errorf("invalid key URL format")
 	}
-	baseURL := fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host)
+	vaultURL := fmt.Sprintf("%s://%s", parsedURL.Scheme, parsedURL.Host)
 	keyName := pathSegments[1]
 	keyVersion := pathSegments[2]
-	return baseURL, keyName, keyVersion, nil
+	return vaultURL, keyName, keyVersion, nil
 }

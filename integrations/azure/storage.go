@@ -37,21 +37,19 @@ func (a *AzureKeyValueStorage) Get(key core.ConfigKey) string {
 		if strVal, ok := val.(string); ok {
 			return strVal
 		}
-		logger.Errorf("%s", fmt.Sprintf("Invalid type for key '%s': %v", key, val))
-		return ""
 	}
 	return ""
+
 }
 
 func (a *AzureKeyValueStorage) Set(key core.ConfigKey, value interface{}) map[string]interface{} {
-	switch v := value.(type) {
-	case string:
-		a.config[key] = v
-		return a.ReadStorage()
-	default:
-		logger.Errorf("%s", fmt.Sprintf("Unknown value for ConfigKey: %s, Value: %v", string(key), v))
+	a.config[key] = value
+	convertedConfig := make(map[string]interface{})
+	for k, v := range a.config {
+		convertedConfig[string(k)] = v
 	}
-	return nil
+	a.SaveStorage(convertedConfig)
+	return a.ReadStorage()
 }
 
 func (a *AzureKeyValueStorage) Delete(key core.ConfigKey) map[string]interface{} {

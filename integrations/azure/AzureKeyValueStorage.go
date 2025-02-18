@@ -34,8 +34,9 @@ type AzureKeyValueStorage struct {
 
 func NewAzureKeyValueStorage(configFileLocation string, azSessionConfig *AzureConfig) *AzureKeyValueStorage {
 	if configFileLocation == "" {
-		configFileLocation = os.Getenv("KSM_CONFIG_FILE")
-		if configFileLocation == "" {
+		if envConfigFileLocation, ok := os.LookupEnv("KSM_CONFIG_FILE"); ok {
+			configFileLocation = envConfigFileLocation
+		} else {
 			configFileLocation = core.DEFAULT_CONFIG_PATH
 		}
 	}
@@ -143,28 +144,28 @@ func (s *AzureKeyValueStorage) loadConfig() error {
 }
 
 func (s *AzureKeyValueStorage) createConfigFileIfMissing() error {
-	if _, err := os.Stat(s.configFileLocation); os.IsNotExist(err) {
-		dir := filepath.Dir(s.configFileLocation)
-		if _, err := os.Stat(dir); os.IsNotExist(err) {
-			if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-				return fmt.Errorf("failed to create directory %s: %w", dir, err)
-			}
-		}
-
-		blob, err := encryptBuffer(s.cryptoClient, s.keyName, s.keyVersion, []byte("{}"))
-		if err != nil {
-			return fmt.Errorf("failed to encrypt empty configuration: %w", err)
-		}
-
-		if err := os.WriteFile(s.configFileLocation, blob, 0644); err != nil {
-			return fmt.Errorf("failed to write config file %s: %w", s.configFileLocation, err)
-		}
-
-		fmt.Println("Config file created at:", s.configFileLocation)
-	} else {
-		logger.Info("Config file already exists at: %s", s.configFileLocation)
+	if _, err := os.Stat(s.configFileLocation); !os.IsNotExist(err) {
+		logger.Infof("Config file already exists at: %s", s.configFileLocation)
+		return nil
 	}
 
+	dir := filepath.Dir(s.configFileLocation)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", dir, err)
+		}
+	}
+
+	blob, err := encryptBuffer(s.cryptoClient, s.keyName, s.keyVersion, []byte("{}"))
+	if err != nil {
+		return fmt.Errorf("failed to encrypt empty configuration: %w", err)
+	}
+
+	if err := os.WriteFile(s.configFileLocation, blob, 0644); err != nil {
+		return fmt.Errorf("failed to write config file %s: %w", s.configFileLocation, err)
+	}
+
+	logger.Infof("Config file created at: %s", s.configFileLocation)
 	return nil
 }
 
@@ -226,7 +227,7 @@ func (s *AzureKeyValueStorage) createHash(data []byte) string {
 func (s *AzureKeyValueStorage) changeKey(newKeyURL string) (bool, error) {
 	oldKeyURL := s.azureConfig.KeyURL
 	oldCryptoClient := s.cryptoClient
-	baseURL, keyName, keyVersion, err := fetchKeyDetails(newKeyURL)
+	vaultURL, keyName, keyVersion, err := fetchKeyDetails(newKeyURL)
 	if err != nil {
 		logger.Errorf("Failed to extract key details from URL '%s': %v", newKeyURL, err)
 		return false, fmt.Errorf("failed to extract key details from URL '%s': %w", newKeyURL, err)
@@ -240,7 +241,7 @@ func (s *AzureKeyValueStorage) changeKey(newKeyURL string) (bool, error) {
 		return false, err
 	}
 
-	client, err := azkeys.NewClient(baseURL, cred, nil)
+	client, err := azkeys.NewClient(vaultURL, cred, nil)
 	if err != nil {
 		return false, fmt.Errorf("failed to create Azure Key Vault client: %w", err)
 	}

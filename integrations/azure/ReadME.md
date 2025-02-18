@@ -41,7 +41,7 @@ configuration variables can be provided as
 ```
 The storage will require an Azure Key URL, as well Secrets Manager configuration which will be encrypted by Azure Key Vault.
 
-Provide `tenant_id` , `client_id` , `client_secret` and `key_url` variables.
+Provide `TenantID` , `ClientID` , `ClientSecret` and `KeyURL` variables.
 
 KeyURL must be like this `https://<vault-name>.vault.azure.net/keys/<key-name>/<version>`
 
