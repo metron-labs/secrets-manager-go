@@ -30,6 +30,7 @@ type AWSKeyVaultStorage struct {
 	lastSavedConfigHash string
 	kmsClient           *kms.Client
 	keyARN              string
+	awsConfig           *AWSConfig
 }
 
 func NewAWSKeyValueStorage(configFileLocation string, KeyARN string, awsSessionConfig *AWSConfig) *AWSKeyVaultStorage {
@@ -58,6 +59,7 @@ func NewAWSKeyValueStorage(configFileLocation string, KeyARN string, awsSessionC
 		lastSavedConfigHash: "",
 		kmsClient:           client,
 		keyARN:              KeyARN,
+		awsConfig:           awsSessionConfig,
 	}
 
 	keyData, err := awsDetails.getKeyDetails()
@@ -268,4 +270,25 @@ func (a *AWSKeyVaultStorage) encryptConfig(config []byte) error {
 
 	logger.Debug("Config file created at: ", a.configFileLocation)
 	return nil
+}
+
+func (a *AWSKeyVaultStorage) changeKey(newKeyARN string) (bool, error) {
+	oldKeyARN := a.keyARN
+	oldKMSClient := a.kmsClient
+	config, err := getConfig(a.awsConfig)
+	if err != nil {
+		return false, fmt.Errorf("failed to get config: %w", err)
+	}
+
+	client := kms.NewFromConfig(*config)
+	a.kmsClient = client
+	a.keyARN = newKeyARN
+	if err := a.saveConfig(a.config); err != nil {
+		a.kmsClient = oldKMSClient
+		a.keyARN = oldKeyARN
+		logger.Errorf("Failed to change the key to '%s' for config '%s': %v", newKeyARN, a.configFileLocation, err)
+		return false, fmt.Errorf("failed to change the key for %s: %w", a.configFileLocation, err)
+	}
+
+	return true, nil
 }
