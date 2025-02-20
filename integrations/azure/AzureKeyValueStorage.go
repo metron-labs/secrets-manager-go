@@ -117,13 +117,13 @@ func (s *AzureKeyValueStorage) loadConfig() error {
 		configJson, err := decryptBuffer(s.cryptoClient, s.keyName, s.keyVersion, contents)
 		if err != nil {
 			decryptionError = true
-			logger.Error("Failed to decrypt config file: %s", err.Error())
+			logger.Errorf("Failed to decrypt config file: %s", err.Error())
 			return fmt.Errorf("failed to decrypt config file %s", s.configFileLocation)
 		}
 
 		if err := json.Unmarshal(configJson, &config); err != nil {
 			decryptionError = true
-			logger.Error("Failed to parse decrypted config file: %s", err.Error())
+			logger.Errorf("Failed to parse decrypted config file: %s", err.Error())
 			return fmt.Errorf("failed to parse decrypted config file %s", s.configFileLocation)
 		}
 
@@ -137,7 +137,7 @@ func (s *AzureKeyValueStorage) loadConfig() error {
 	}
 
 	if jsonError != nil && decryptionError {
-		logger.Error("Config file is not a valid JSON file: %s", jsonError.Error())
+		logger.Errorf("Config file is not a valid JSON file: %s", jsonError.Error())
 		return fmt.Errorf("%s may contain JSON format problems", s.configFileLocation)
 	}
 
