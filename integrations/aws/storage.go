@@ -60,7 +60,7 @@ func (a *AWSKeyVaultStorage) Delete(key core.ConfigKey) map[string]interface{} {
 		logger.Debugf("%s", "Removed key: "+string(key))
 		a.saveConfig(a.config)
 	} else {
-		logger.Warn("%s", fmt.Sprintf("No key '%s' was found in config", string(key)))
+		logger.Warnf("%s", fmt.Sprintf("No key '%s' was found in config", string(key)))
 	}
 	return a.ReadStorage()
 }

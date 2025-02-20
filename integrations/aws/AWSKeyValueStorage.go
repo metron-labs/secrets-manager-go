@@ -92,7 +92,7 @@ func (a *AWSKeyVaultStorage) loadConfig() error {
 	}
 
 	if len(contents) == 0 {
-		logger.Error("Empty config file %s", a.configFileLocation)
+		logger.Errorf("Empty config file %s", a.configFileLocation)
 		contents = []byte("{}")
 	}
 
@@ -121,21 +121,21 @@ func (a *AWSKeyVaultStorage) loadConfig() error {
 			decryptData, err = decryptSymmetric(a.kmsClient, a.keyARN, contents)
 			if err != nil {
 				decryptionError = true
-				logger.Error("Failed to decrypt config file: %s", err.Error())
+				logger.Errorf("Failed to decrypt config file: %s", err.Error())
 				return fmt.Errorf("failed to decrypt config file %s", a.configFileLocation)
 			}
 		} else {
 			decryptData, err = decryptAsymmetric(a.kmsClient, a.keyARN, contents)
 			if err != nil {
 				decryptionError = true
-				logger.Error("Failed to decrypt config file: %s", err.Error())
+				logger.Errorf("Failed to decrypt config file: %s", err.Error())
 				return fmt.Errorf("failed to decrypt config file %s", a.configFileLocation)
 			}
 		}
 
 		if err := json.Unmarshal(decryptData, &config); err != nil {
 			decryptionError = true
-			logger.Error("Failed to parse decrypted config file: %s", err.Error())
+			logger.Errorf("Failed to parse decrypted config file: %s", err.Error())
 			return fmt.Errorf("failed to parse decrypted config file %s", a.configFileLocation)
 		}
 
@@ -144,7 +144,7 @@ func (a *AWSKeyVaultStorage) loadConfig() error {
 	}
 
 	if jsonError != nil && decryptionError {
-		logger.Error("Config file is not a valid JSON file: %s", jsonError.Error())
+		logger.Errorf("Config file is not a valid JSON file: %s", jsonError.Error())
 		return fmt.Errorf("%s may contain JSON format problems", a.configFileLocation)
 	}
 
@@ -218,7 +218,7 @@ func (a *AWSKeyVaultStorage) getKeyDetails() (*kms.DescribeKeyOutput, error) {
 	})
 
 	if err != nil {
-		logger.Error("Failed to get key details: %v", err)
+		logger.Errorf("Failed to get key details: %v", err)
 		return nil, fmt.Errorf("failed to get key details: %w", err)
 	}
 

@@ -92,7 +92,7 @@ func encryptAsymmetric(client *kms.Client, keyId string, message []byte) ([]byte
 		EncryptionAlgorithm: types.EncryptionAlgorithmSpecRsaesOaepSha256,
 	})
 	if err != nil {
-		logger.Error("Failed to encrypt asymmetric key: %v", err)
+		logger.Errorf("Failed to encrypt asymmetric key: %v", err)
 		return nil, fmt.Errorf("failed to encrypt asymmetric key: %w", err)
 	}
 
@@ -123,7 +123,7 @@ func decryptAsymmetric(client *kms.Client, keyId string, cipherText []byte) ([]b
 		EncryptionAlgorithm: types.EncryptionAlgorithmSpecRsaesOaepSha256,
 	})
 	if err != nil {
-		logger.Error("Failed to decrypt asymmetric key: %v", err)
+		logger.Errorf("Failed to decrypt asymmetric key: %v", err)
 		return nil, fmt.Errorf("failed to decrypt asymmetric key: %w", err)
 	}
 

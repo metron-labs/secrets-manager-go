@@ -1,78 +1,56 @@
 package logger
 
 import (
-	"fmt"
 	"log"
 	"os"
-	"time"
 )
 
-// Logger interface defines the methods for logging at different levels.
-type Logger interface {
-	Info(message string, meta ...interface{})
-	Warn(message string, meta ...interface{})
-	Error(message string, meta ...interface{})
-	Errorf(format string, args ...interface{})
-	Debug(message string, meta ...interface{})
-	Debugf(message string, meta ...interface{})
+type NewCustomLogger struct {
+	debug *log.Logger
+	info  *log.Logger
+	warn  *log.Logger
+	error *log.Logger
 }
 
-// DefaultLogger is the default implementation of the Logger interface.
-type DefaultLogger struct {
-	infoLogger  *log.Logger
-	warnLogger  *log.Logger
-	errorLogger *log.Logger
-	debugLogger *log.Logger
-}
+var Logger *NewCustomLogger
 
-// Global default logger instance
-var defaultLogger = NewDefaultLogger()
-
-// NewDefaultLogger creates a new instance of DefaultLogger.
-func NewDefaultLogger() *DefaultLogger {
-	return &DefaultLogger{
-		infoLogger:  newCustomLogger(os.Stdout),
-		warnLogger:  newCustomLogger(os.Stdout),
-		errorLogger: newCustomLogger(os.Stderr),
-		debugLogger: newCustomLogger(os.Stdout),
+func init() {
+	Logger = &NewCustomLogger{
+		debug: log.New(os.Stdout, "DEBUG: ", log.LstdFlags),
+		info:  log.New(os.Stdout, "INFO: ", log.LstdFlags),
+		warn:  log.New(os.Stdout, "WARN: ", log.LstdFlags),
+		error: log.New(os.Stderr, "ERROR: ", log.LstdFlags),
 	}
 }
 
-func newCustomLogger(out *os.File) *log.Logger {
-	return log.New(out, "", 0)
+func Debug(v ...interface{}) {
+	Logger.debug.Println(v...)
 }
 
-func formatLog(level, message string) string {
-	timestamp := time.Now().Format("2006/01/02 15:04:05.000000")
-	return timestamp + " " + level + ": " + message
+func Info(v ...interface{}) {
+	Logger.info.Println(v...)
 }
 
-// Info logs an informational message.
-func Infof(message string, meta ...interface{}) {
-	defaultLogger.infoLogger.Println(formatLog("INFO", fmt.Sprintf(message, meta...)))
+func Warn(v ...interface{}) {
+	Logger.warn.Println(v...)
 }
 
-// Warn logs a warning message.
-func Warn(message string, meta ...interface{}) {
-	defaultLogger.warnLogger.Println(formatLog("WARNING", message))
+func Error(v ...interface{}) {
+	Logger.error.Println(v...)
 }
 
-// Error logs an error message.
-func Error(message string, meta ...interface{}) {
-	defaultLogger.errorLogger.Println(formatLog("ERROR", message))
+func Debugf(format string, v ...interface{}) {
+	Logger.debug.Printf(format, v...)
 }
 
-// Errorf logs a formatted error message.
-func Errorf(message string, args ...interface{}) {
-	defaultLogger.errorLogger.Println(formatLog("ERROR", fmt.Sprintf(message, args...)))
+func Infof(format string, v ...interface{}) {
+	Logger.info.Printf(format, v...)
 }
 
-// Debug logs a debug message.
-func Debug(message string, meta ...interface{}) {
-	defaultLogger.debugLogger.Println(formatLog("DEBUG", message))
+func Warnf(format string, v ...interface{}) {
+	Logger.warn.Printf(format, v...)
 }
 
-// Debugf logs a debug message.
-func Debugf(message string, meta ...interface{}) {
-	defaultLogger.debugLogger.Println(formatLog("DEBUG", message))
+func Errorf(format string, v ...interface{}) {
+	Logger.error.Printf(format, v...)
 }
