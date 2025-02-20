@@ -1,4 +1,4 @@
-**Azure Key Vault**
+**AWS Key Management**
 
 Protect Secrets Manager connection details with AWS Key Management 
 
@@ -18,7 +18,7 @@ Prerequisites
 Setup
 1. Install Secret-Manager-Go Package
 
-The Secrets Manager azure package are located in the Keeper Secrets Manager storage package which can be installed using 
+The Secrets Manager AWS package are located in the Keeper Secrets Manager storage package which can be installed using 
 
 > `go get github.com/keeper-security/secrets-manager-go/core`
 Configure AWS Connection
