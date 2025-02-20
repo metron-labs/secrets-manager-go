@@ -216,8 +216,13 @@ func (s *AzureKeyValueStorage) createHash(data []byte) string {
 }
 
 func (s *AzureKeyValueStorage) changeKey(newKeyURL string) (bool, error) {
-	oldKeyURL := s.azureConfig.KeyURL
-	oldCryptoClient := s.cryptoClient
+	oldState := struct {
+		vaultURL, keyName, keyVersion string
+		cryptoClient                  *azkeys.Client
+	}{
+		s.azureConfig.KeyURL, s.keyName, s.keyVersion, s.cryptoClient,
+	}
+
 	vaultURL, keyName, keyVersion, err := fetchKeyDetails(newKeyURL)
 	if err != nil {
 		logger.Errorf("Failed to extract key details from URL '%s': %v", newKeyURL, err)
@@ -227,6 +232,7 @@ func (s *AzureKeyValueStorage) changeKey(newKeyURL string) (bool, error) {
 	s.azureConfig.KeyURL = newKeyURL
 	s.keyName = keyName
 	s.keyVersion = keyVersion
+
 	cred, err := fetchCredentials(s.azureConfig)
 	if err != nil {
 		return false, err
@@ -239,11 +245,10 @@ func (s *AzureKeyValueStorage) changeKey(newKeyURL string) (bool, error) {
 
 	s.cryptoClient = client
 	if err := s.saveConfig(s.config); err != nil {
-		oldBaseURL, oldKeyName, oldKeyVersion, err := fetchKeyDetails(oldKeyURL)
-		s.azureConfig.KeyURL = oldBaseURL
-		s.keyName = oldKeyName
-		s.keyVersion = oldKeyVersion
-		s.cryptoClient = oldCryptoClient
+		s.azureConfig.KeyURL = oldState.vaultURL
+		s.keyName = oldState.keyName
+		s.keyVersion = oldState.keyVersion
+		s.cryptoClient = oldState.cryptoClient
 		logger.Errorf("Failed to change the key to '%s' for config '%s': %v", newKeyURL, s.configFileLocation, err)
 		return false, fmt.Errorf("failed to change the key for %s: %w", s.configFileLocation, err)
 	}
