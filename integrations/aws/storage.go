@@ -67,6 +67,7 @@ func (a *AWSKeyVaultStorage) Delete(key core.ConfigKey) map[string]interface{} {
 
 func (a *AWSKeyVaultStorage) DeleteAll() map[string]interface{} {
 	a.config = map[core.ConfigKey]interface{}{}
+	a.saveConfig(a.config)
 	return a.ReadStorage()
 }
 

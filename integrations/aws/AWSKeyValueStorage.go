@@ -24,6 +24,7 @@ type AWSConfig struct {
 	ClientSecret string
 	Region       string
 }
+
 type AWSKeyVaultStorage struct {
 	configFileLocation  string
 	config              map[core.ConfigKey]interface{}
@@ -74,6 +75,11 @@ func NewAWSKeyValueStorage(configFileLocation string, KeyARN string, awsSessionC
 }
 
 func (a *AWSKeyVaultStorage) loadConfig() error {
+	var config map[core.ConfigKey]interface{}
+	var jsonError error
+	var decryptionError bool
+	var decryptData []byte
+
 	if err := a.createConfigFileIfMissing(); err != nil {
 		return err
 	}
@@ -88,11 +94,6 @@ func (a *AWSKeyVaultStorage) loadConfig() error {
 		logger.Error("Empty config file %s", a.configFileLocation)
 		contents = []byte("{}")
 	}
-
-	var config map[core.ConfigKey]interface{}
-	var jsonError error
-	var decryptionError bool
-	var decryptData []byte
 
 	if err := json.Unmarshal(contents, &config); err == nil {
 		a.config = config
