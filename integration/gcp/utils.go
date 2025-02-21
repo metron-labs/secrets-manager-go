@@ -1,0 +1,217 @@
+package gcpkv
+
+import (
+	"bytes"
+	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/pem"
+	"fmt"
+	"gcpkv/gcp/logger"
+	"hash/crc32"
+	"io"
+	"strings"
+
+	kms "cloud.google.com/go/kms/apiv1"
+	"cloud.google.com/go/kms/apiv1/kmspb"
+	"google.golang.org/protobuf/types/known/wrapperspb"
+)
+
+const (
+	BLOB_HEADER = "\xff\xff"
+	NONCE_SIZE  = 12
+)
+
+func encryptionSymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClient, keyResourceName string, message []byte) ([]byte, error) {
+	if keyResourceName == "" {
+		logger.Errorf("keyResourceName is empty")
+		return nil, fmt.Errorf("keyResourceName is empty")
+	}
+
+	crc32c := func(data []byte) uint32 {
+		t := crc32.MakeTable(crc32.Castagnoli)
+		return crc32.Checksum(data, t)
+	}
+
+	text, err := gcpKMCClient.Encrypt(ctx, &kmspb.EncryptRequest{
+		Name:            keyResourceName,
+		Plaintext:       message,
+		PlaintextCrc32C: wrapperspb.Int64(int64(crc32c(message))),
+	})
+	if err != nil {
+		logger.Errorf("failed to encrypt message: %v", err)
+		return nil, fmt.Errorf("failed to encrypt message: %w", err)
+	}
+
+	return text.Ciphertext, nil
+
+}
+
+func decryptionSymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClient, keyResourceName string, cipherText []byte) ([]byte, error) {
+	if keyResourceName == "" {
+		return nil, fmt.Errorf("keyResourceName is empty")
+	}
+
+	index := strings.Index(keyResourceName, "/cryptoKeyVersions/")
+	if index != -1 {
+		keyResourceName = keyResourceName[:index]
+	}
+
+	crc32c := func(data []byte) uint32 {
+		t := crc32.MakeTable(crc32.Castagnoli)
+		return crc32.Checksum(data, t)
+	}
+
+	plainText, err := gcpKMCClient.Decrypt(ctx, &kmspb.DecryptRequest{
+		Name:             keyResourceName,
+		Ciphertext:       cipherText,
+		CiphertextCrc32C: wrapperspb.Int64(int64(crc32c(cipherText))),
+	})
+	if err != nil {
+		logger.Errorf("failed to decrypt message: %v", err)
+		return nil, fmt.Errorf("failed to decrypt message: %w", err)
+	}
+
+	return plainText.Plaintext, nil
+}
+
+func encryptionAsymmetricKey(ctx context.Context, gcpKMCClient *kms.KeyManagementClient, keyResourceName string, key []byte) ([]byte, error) {
+	response, err := gcpKMCClient.GetPublicKey(ctx, &kmspb.GetPublicKeyRequest{
+		Name: keyResourceName,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to get public key: %w", err)
+	}
+
+	block, _ := pem.Decode([]byte(response.Pem))
+	if block == nil {
+		return nil, fmt.Errorf("failed to decode public key: no PEM data found")
+	}
+
+	publicKey, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse public key: %w", err)
+	}
+
+	rsaKey, ok := publicKey.(*rsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("public key is not rsa")
+	}
+
+	ciphertext, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, rsaKey, key, nil)
+	if err != nil {
+		return nil, fmt.Errorf("rsa.EncryptOAEP: %w", err)
+	}
+
+	return ciphertext, nil
+}
+
+func decryptAsymmetricKey(ctx context.Context, gcpKMCClient *kms.KeyManagementClient, keyResourceName string, key []byte) ([]byte, error) {
+	crc32c := func(data []byte) uint32 {
+		t := crc32.MakeTable(crc32.Castagnoli)
+		return crc32.Checksum(data, t)
+	}
+	ciphertextCRC32C := crc32c(key)
+
+	// Build the request.
+	req := &kmspb.AsymmetricDecryptRequest{
+		Name:             keyResourceName,
+		Ciphertext:       key,
+		CiphertextCrc32C: wrapperspb.Int64(int64(ciphertextCRC32C)),
+	}
+
+	result, err := gcpKMCClient.AsymmetricDecrypt(ctx, req)
+	if err != nil {
+		logger.Errorf("failed to decrypt ciphertext: %v", err)
+		return nil, fmt.Errorf("failed to decrypt ciphertext: %w", err)
+	}
+
+	if !result.VerifiedCiphertextCrc32C {
+		return nil, fmt.Errorf("AsymmetricDecrypt: request corrupted in-transit")
+	}
+
+	if int64(crc32c(result.Plaintext)) != result.PlaintextCrc32C.Value {
+		return nil, fmt.Errorf("AsymmetricDecrypt: response corrupted in-transit")
+	}
+
+	return result.Plaintext, nil
+}
+
+func encryptAsymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClient, keyResourceName string, message []byte) ([]byte, error) {
+	key := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, key); err != nil {
+		return nil, err
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, err
+	}
+
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	nonce := make([]byte, aesGCM.NonceSize())
+	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
+
+	ciphertext := aesGCM.Seal(nil, nonce, message, nil)
+	tag := ciphertext[len(ciphertext)-aesGCM.Overhead():]
+	ciphertext = ciphertext[:len(ciphertext)-aesGCM.Overhead()]
+
+	encryptedKey, err := encryptionAsymmetricKey(ctx, gcpKMCClient, keyResourceName, key)
+	if err != nil {
+		return nil, err
+	}
+
+	logger.Infof("Length Encrypted key: %v", len(encryptedKey))
+	var blob []byte
+	blob = append(blob, []byte(BLOB_HEADER)...)
+	blob = append(blob, encryptedKey...)
+	blob = append(blob, nonce...)
+	blob = append(blob, tag...)
+	blob = append(blob, ciphertext...)
+
+	return blob, nil
+}
+
+func decryptAsymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClient, keyResourceName string, cipherText []byte, keySize int) ([]byte, error) {
+	if !bytes.HasPrefix(cipherText, []byte(BLOB_HEADER)) {
+		return nil, fmt.Errorf("invalid BLOB_HEADER")
+	}
+
+	cipherText = cipherText[len(BLOB_HEADER):]
+	key := cipherText[:keySize]
+	decryptedKey, err := decryptAsymmetricKey(ctx, gcpKMCClient, keyResourceName, key)
+	if err != nil {
+		return nil, err
+	}
+
+	block, err := aes.NewCipher(decryptedKey)
+	if err != nil {
+		return nil, err
+	}
+
+	aesGCM, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+
+	cipherText = cipherText[keySize:]
+	nonce, tag, ciphertext := cipherText[:NONCE_SIZE], cipherText[NONCE_SIZE:NONCE_SIZE+aesGCM.Overhead()], cipherText[NONCE_SIZE+aesGCM.Overhead():]
+
+	ciphertext = append(ciphertext, tag...)
+	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return plaintext, nil
+}
