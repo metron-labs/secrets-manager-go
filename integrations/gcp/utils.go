@@ -7,7 +7,6 @@ import (
 	"crypto/cipher"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/sha256"
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
@@ -84,6 +83,7 @@ func encryptionAsymmetricKey(ctx context.Context, gcpKMCClient *kms.KeyManagemen
 		Name: keyResourceName,
 	})
 	if err != nil {
+		logger.Errorf("Failed to get public key: %v", err)
 		return nil, fmt.Errorf("failed to get public key: %w", err)
 	}
 
@@ -102,7 +102,20 @@ func encryptionAsymmetricKey(ctx context.Context, gcpKMCClient *kms.KeyManagemen
 		return nil, fmt.Errorf("public key is not rsa")
 	}
 
-	ciphertext, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, rsaKey, key, nil)
+	keyVersion, err := gcpKMCClient.GetCryptoKeyVersion(ctx, &kmspb.GetCryptoKeyVersionRequest{
+		Name: keyResourceName,
+	})
+	if err != nil {
+		logger.Errorf("Failed to get key details: %v", err)
+		return nil, fmt.Errorf("failed to get key version: %w", err)
+	}
+
+	hashAlg, ok := keyDetails[keyVersion.Algorithm]
+	if !ok {
+		return nil, fmt.Errorf("unsupported key algorithm: %v", keyVersion.Algorithm)
+	}
+
+	ciphertext, err := rsa.EncryptOAEP(hashAlg.HashAlgorithm, rand.Reader, rsaKey, key, nil)
 	if err != nil {
 		return nil, fmt.Errorf("rsa.EncryptOAEP: %w", err)
 	}
@@ -117,7 +130,6 @@ func decryptAsymmetricKey(ctx context.Context, gcpKMCClient *kms.KeyManagementCl
 	}
 	ciphertextCRC32C := crc32c(key)
 
-	// Build the request.
 	req := &kmspb.AsymmetricDecryptRequest{
 		Name:             keyResourceName,
 		Ciphertext:       key,
@@ -142,6 +154,7 @@ func decryptAsymmetricKey(ctx context.Context, gcpKMCClient *kms.KeyManagementCl
 }
 
 func encryptAsymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClient, keyResourceName string, message []byte) ([]byte, error) {
+	var blob []byte
 	key := make([]byte, 32)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
 		return nil, err
@@ -168,11 +181,10 @@ func encryptAsymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClien
 
 	encryptedKey, err := encryptionAsymmetricKey(ctx, gcpKMCClient, keyResourceName, key)
 	if err != nil {
+		logger.Errorf("Failed to encrypt asymmetric key: %v", err)
 		return nil, err
 	}
 
-	logger.Infof("Length Encrypted key: %v", len(encryptedKey))
-	var blob []byte
 	blob = append(blob, []byte(BLOB_HEADER)...)
 	blob = append(blob, encryptedKey...)
 	blob = append(blob, nonce...)
@@ -182,12 +194,28 @@ func encryptAsymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClien
 	return blob, nil
 }
 
-func decryptAsymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClient, keyResourceName string, cipherText []byte, keySize int) ([]byte, error) {
+func decryptAsymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClient, keyResourceName string, cipherText []byte) ([]byte, error) {
 	if !bytes.HasPrefix(cipherText, []byte(BLOB_HEADER)) {
 		return nil, fmt.Errorf("invalid BLOB_HEADER")
 	}
 
 	cipherText = cipherText[len(BLOB_HEADER):]
+
+	keyVersion, err := gcpKMCClient.GetCryptoKeyVersion(ctx, &kmspb.GetCryptoKeyVersionRequest{
+		Name: keyResourceName,
+	})
+	if err != nil {
+		logger.Errorf("Failed to get key details: %v", err)
+		return nil, fmt.Errorf("failed to get key version: %w", err)
+	}
+
+	hashAlg, ok := keyDetails[keyVersion.Algorithm]
+	if !ok {
+		logger.Errorf("Unsupported key algorithm: %v", keyVersion.Algorithm)
+		return nil, fmt.Errorf("unsupported key algorithm: %v", keyVersion.Algorithm)
+	}
+
+	keySize := hashAlg.KeySize
 	key := cipherText[:keySize]
 	decryptedKey, err := decryptAsymmetricKey(ctx, gcpKMCClient, keyResourceName, key)
 	if err != nil {
@@ -210,6 +238,7 @@ func decryptAsymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClien
 	ciphertext = append(ciphertext, tag...)
 	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
 	if err != nil {
+		logger.Errorf("Data tampering detected or decryption failed: %v", err)
 		return nil, err
 	}
 

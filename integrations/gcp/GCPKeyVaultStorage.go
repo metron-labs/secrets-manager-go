@@ -3,10 +3,14 @@ package gcpkv
 import (
 	"context"
 	"crypto/md5"
+	"crypto/sha1"
+	"crypto/sha256"
+	"crypto/sha512"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"gcpkv/gcp/logger"
+	"hash"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,6 +25,7 @@ type GoogleCloudKeyVaultStorage struct {
 	configFileLocation  string
 	config              map[core.ConfigKey]interface{}
 	lastSavedConfigHash string
+	keyResourceName     string
 	gcpKMCClient        *kms.KeyManagementClient
 	gcpConfig           *GCPConfig
 }
@@ -28,6 +33,21 @@ type GoogleCloudKeyVaultStorage struct {
 type GCPConfig struct {
 	CredentialsFileLocation string
 	KeyResourceName         string
+}
+
+type HashAlgorithm struct {
+	KeySize       int
+	HashAlgorithm hash.Hash
+}
+
+var keyDetails = map[kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm]HashAlgorithm{
+	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_2048_SHA256: {KeySize: 256, HashAlgorithm: sha256.New()},
+	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_3072_SHA256: {KeySize: 384, HashAlgorithm: sha256.New()},
+	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_4096_SHA256: {KeySize: 512, HashAlgorithm: sha256.New()},
+	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_4096_SHA512: {KeySize: 512, HashAlgorithm: sha512.New()},
+	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_2048_SHA1:   {KeySize: 256, HashAlgorithm: sha1.New()},
+	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_3072_SHA1:   {KeySize: 384, HashAlgorithm: sha1.New()},
+	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_4096_SHA1:   {KeySize: 512, HashAlgorithm: sha1.New()},
 }
 
 func NewGCPKeyVaultStorage(configFileLocation string, gcpConfig *GCPConfig) *GoogleCloudKeyVaultStorage {
@@ -42,6 +62,7 @@ func NewGCPKeyVaultStorage(configFileLocation string, gcpConfig *GCPConfig) *Goo
 
 	gcpKeyManagementClient, err := kms.NewKeyManagementClient(ctx, option.WithCredentialsFile(gcpConfig.CredentialsFileLocation))
 	if err != nil {
+		logger.Errorf("Failed to create GCP Key Management client: %v", err)
 		return nil
 	}
 	defer gcpKeyManagementClient.Close()
@@ -60,6 +81,7 @@ func NewGCPKeyVaultStorage(configFileLocation string, gcpConfig *GCPConfig) *Goo
 		configFileLocation:  configFileLocation,
 		config:              make(map[core.ConfigKey]interface{}),
 		lastSavedConfigHash: "",
+		keyResourceName:     gcpConfig.KeyResourceName,
 		gcpKMCClient:        gcpKeyManagementClient,
 		gcpConfig:           gcpConfig,
 	}
@@ -74,7 +96,6 @@ func (g *GoogleCloudKeyVaultStorage) loadConfig() error {
 	var jsonError error
 	var decryptionError bool
 	var decryptData []byte
-	var keySize int
 
 	if err := g.createConfigFileIfMissing(); err != nil {
 		return err
@@ -113,7 +134,6 @@ func (g *GoogleCloudKeyVaultStorage) loadConfig() error {
 			return err
 		}
 
-		keySize = getKeySize(keydata.VersionTemplate.Algorithm)
 		if keydata.Purpose == kmspb.CryptoKey_ENCRYPT_DECRYPT {
 			decryptData, err = decryptionSymmetric(ctx, g.gcpKMCClient, g.gcpConfig.KeyResourceName, contents)
 			if err != nil {
@@ -122,7 +142,7 @@ func (g *GoogleCloudKeyVaultStorage) loadConfig() error {
 				return fmt.Errorf("failed to decrypt config file %s", g.configFileLocation)
 			}
 		} else {
-			decryptData, err = decryptAsymmetric(ctx, g.gcpKMCClient, g.gcpConfig.KeyResourceName, contents, keySize)
+			decryptData, err = decryptAsymmetric(ctx, g.gcpKMCClient, g.gcpConfig.KeyResourceName, contents)
 			if err != nil {
 				decryptionError = true
 				logger.Errorf("Failed to decrypt config file: %s", err.Error())
@@ -173,7 +193,7 @@ func (g *GoogleCloudKeyVaultStorage) saveConfig(updatedConfig map[core.ConfigKey
 	}
 
 	if configHash == g.lastSavedConfigHash {
-		fmt.Println("Skipped config JSON save. No changes detected.")
+		logger.Info("Skipped config JSON save. No changes detected.")
 		return nil
 	}
 
@@ -232,27 +252,6 @@ func getKeyDetails(ctx context.Context, client *kms.KeyManagementClient, keyReso
 	}
 
 	return resp, nil
-}
-
-func getKeySize(keyData kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm) int {
-	switch keyData {
-	case kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_2048_SHA256:
-		return 256
-	case kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_3072_SHA256:
-		return 384
-	case kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_4096_SHA256:
-		return 512
-	case kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_4096_SHA512:
-		return 512
-	case kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_2048_SHA1:
-		return 256
-	case kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_3072_SHA1:
-		return 384
-	case kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_4096_SHA1:
-		return 512
-	default:
-		return 0
-	}
 }
 
 func (g *GoogleCloudKeyVaultStorage) encryptConfig(ctx context.Context, config []byte) error {
