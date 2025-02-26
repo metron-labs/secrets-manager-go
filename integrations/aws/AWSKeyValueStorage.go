@@ -33,6 +33,12 @@ type AWSKeyVaultStorage struct {
 	awsConfig           *AWSConfig
 }
 
+var keySizeDetails = map[types.KeySpec]int{
+	types.KeySpecRsa2048: 256,
+	types.KeySpecRsa3072: 384,
+	types.KeySpecRsa4096: 512,
+}
+
 func NewAWSKeyValueStorage(configFileLocation string, KeyARN string, awsSessionConfig *AWSConfig) *AWSKeyVaultStorage {
 	if configFileLocation == "" {
 		if envConfigFileLocation, ok := os.LookupEnv("KSM_CONFIG_FILE"); ok {

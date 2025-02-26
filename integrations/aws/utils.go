@@ -16,7 +16,6 @@ import (
 
 const (
 	BLOB_HEADER = "\xff\xff"
-	KEY_SIZE    = 384
 	NONCE_SIZE  = 12
 )
 
@@ -115,8 +114,21 @@ func decryptAsymmetric(client *kms.Client, keyId string, cipherText []byte) ([]b
 		return nil, fmt.Errorf("invalid BLOB_HEADER")
 	}
 
+	keyDetails, err := client.DescribeKey(context.Background(), &kms.DescribeKeyInput{
+		KeyId: &keyId,
+	})
+	if err != nil {
+		logger.Errorf("Failed to get key details: %v", err)
+		return nil, fmt.Errorf("failed to get key details: %w", err)
+	}
+
+	keySize, ok := keySizeDetails[keyDetails.KeyMetadata.KeySpec]
+	if !ok {
+		return nil, fmt.Errorf("unsupported key spec: %v", keyDetails.KeyMetadata.KeySpec)
+	}
+
 	cipherText = cipherText[len(BLOB_HEADER):]
-	key := cipherText[:KEY_SIZE]
+	key := cipherText[:keySize]
 	decryptedKey, err := client.Decrypt(context.Background(), &kms.DecryptInput{
 		KeyId:               &keyId,
 		CiphertextBlob:      key,
@@ -137,7 +149,7 @@ func decryptAsymmetric(client *kms.Client, keyId string, cipherText []byte) ([]b
 		return nil, err
 	}
 
-	cipherText = cipherText[KEY_SIZE:]
+	cipherText = cipherText[keySize:]
 	nonce, tag, ciphertext := cipherText[:NONCE_SIZE], cipherText[NONCE_SIZE:NONCE_SIZE+aesGCM.Overhead()], cipherText[NONCE_SIZE+aesGCM.Overhead():]
 
 	ciphertext = append(ciphertext, tag...)
