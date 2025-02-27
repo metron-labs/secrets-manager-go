@@ -7,6 +7,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"io"
 
@@ -16,8 +17,6 @@ import (
 
 const (
 	BLOB_HEADER = "\xff\xff"
-	KEY_SIZE    = 256
-	NONCE_SIZE  = 12
 )
 
 func encryptBuffer(azureKvStorageCryptoClient *azkeys.Client, keyName string, keyVersion string, message []byte) ([]byte, error) {
@@ -56,15 +55,27 @@ func encryptBuffer(azureKvStorageCryptoClient *azkeys.Client, keyName string, ke
 	}
 
 	wrappedKey := wrappedKeyResp.Result
-	var blob []byte
-	blob = append(blob, []byte(BLOB_HEADER)...)
-	blob = append(blob, wrappedKey...)
-	blob = append(blob, nonce...)
-	blob = append(blob, tag...)
-	blob = append(blob, ciphertext...)
+	blob := append([]byte{}, []byte(BLOB_HEADER)...)
 
+	components := [][]byte{
+		wrappedKey,
+		nonce,
+		tag,
+		ciphertext,
+	}
+
+	// Iterate over the components and append the length and data
+	for _, comp := range components {
+		blob = append(blob, uint32ToBytes(uint32(len(comp)))...)
+		blob = append(blob, comp...)
+	}
 	return blob, nil
+}
 
+func uint32ToBytes(n uint32) []byte {
+	buf := make([]byte, 4)
+	binary.BigEndian.PutUint32(buf, n)
+	return buf
 }
 
 func decryptBuffer(azureKeyValueStorageCryptoClient *azkeys.Client, keyName string, keyVersion string, cipherText []byte) ([]byte, error) {
@@ -73,11 +84,19 @@ func decryptBuffer(azureKeyValueStorageCryptoClient *azkeys.Client, keyName stri
 	}
 
 	cipherText = cipherText[len(BLOB_HEADER):]
-	encryptedKey := cipherText[:KEY_SIZE]
+
+	// Extract components
+	components := make([][]byte, 4)
+	for i := range components {
+		compLen := binary.BigEndian.Uint32(cipherText[:4])
+		cipherText = cipherText[4:]
+		components[i] = cipherText[:compLen]
+		cipherText = cipherText[compLen:]
+	}
 
 	parameters := azkeys.KeyOperationParameters{
 		Algorithm: to.Ptr(azkeys.EncryptionAlgorithmRSAOAEP),
-		Value:     encryptedKey,
+		Value:     components[0],
 	}
 
 	decryptedKey, err := azureKeyValueStorageCryptoClient.UnwrapKey(context.Background(), keyName, keyVersion, parameters, nil)
@@ -96,11 +115,7 @@ func decryptBuffer(azureKeyValueStorageCryptoClient *azkeys.Client, keyName stri
 		return nil, err
 	}
 
-	cipherText = cipherText[KEY_SIZE:]
-	nonce, tag, ciphertext := cipherText[:NONCE_SIZE], cipherText[NONCE_SIZE:NONCE_SIZE+aesGCM.Overhead()], cipherText[NONCE_SIZE+aesGCM.Overhead():]
-
-	ciphertext = append(ciphertext, tag...)
-	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
+	plaintext, err := aesGCM.Open(nil, components[1], append(components[3], components[2]...), nil)
 	if err != nil {
 		logger.Errorf("Data tampering detected or decryption failed: %v", err)
 		return nil, err

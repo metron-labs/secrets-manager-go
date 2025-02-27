@@ -215,7 +215,7 @@ func (s *AzureKeyValueStorage) createHash(data []byte) string {
 	return hex.EncodeToString(hash[:])
 }
 
-func (s *AzureKeyValueStorage) changeKey(newKeyURL string) (bool, error) {
+func (s *AzureKeyValueStorage) ChangeKey(newKeyURL string) (bool, error) {
 	oldState := struct {
 		vaultURL, keyName, keyVersion string
 		cryptoClient                  *azkeys.Client
