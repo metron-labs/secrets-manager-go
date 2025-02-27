@@ -9,7 +9,7 @@ import (
 
 func (a *AzureKeyValueStorage) ReadStorage() map[string]interface{} {
 	if err := a.loadConfig(); err != nil {
-		logger.Errorf("%s", fmt.Sprintf("Failed to load config: %v", err))
+		logger.Errorf("Failed to load config: %v", err)
 		return nil
 	}
 	convertedConfig := make(map[string]interface{})
@@ -28,7 +28,7 @@ func (a *AzureKeyValueStorage) SaveStorage(updatedConfig map[string]interface{})
 	}
 
 	if err := a.saveConfig(convertedConfig); err != nil {
-		logger.Errorf("%s", fmt.Sprintf("Failed to save config: %v", err))
+		logger.Errorf("Failed to save config: %v", err)
 	}
 }
 
@@ -55,7 +55,7 @@ func (a *AzureKeyValueStorage) Set(key core.ConfigKey, value interface{}) map[st
 func (a *AzureKeyValueStorage) Delete(key core.ConfigKey) map[string]interface{} {
 	if _, found := a.config[key]; found {
 		delete(a.config, key)
-		logger.Debugf("%s", "Removed key: "+string(key))
+		logger.Debugf("Removed key: %s", string(key))
 		a.saveConfig(a.config)
 	} else {
 		logger.Warnf("%s", fmt.Sprintf("No key '%s' was found in config", string(key)))
