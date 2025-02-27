@@ -7,6 +7,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"io"
 
@@ -16,7 +17,6 @@ import (
 
 const (
 	BLOB_HEADER = "\xff\xff"
-	NONCE_SIZE  = 12
 )
 
 func encryptSymmetric(client *kms.Client, keyId string, message []byte) ([]byte, error) {
@@ -58,15 +58,15 @@ func decryptSymmetric(client *kms.Client, keyId string, cipherText []byte) ([]by
 
 func encryptAsymmetric(client *kms.Client, keyId string, message []byte) ([]byte, error) {
 	if keyId == "" {
-		return nil, fmt.Errorf("keyId is empty")
+		return nil, fmt.Errorf("keyId is required")
 	}
 
-	key := make([]byte, 32)
-	if _, err := io.ReadFull(rand.Reader, key); err != nil {
+	symmetricKey := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, symmetricKey); err != nil {
 		return nil, err
 	}
 
-	block, err := aes.NewCipher(key)
+	block, err := aes.NewCipher(symmetricKey)
 	if err != nil {
 		return nil, err
 	}
@@ -85,24 +85,39 @@ func encryptAsymmetric(client *kms.Client, keyId string, message []byte) ([]byte
 	tag := ciphertext[len(ciphertext)-aesGCM.Overhead():]
 	ciphertext = ciphertext[:len(ciphertext)-aesGCM.Overhead()]
 
+	// Encrypt the symmetric key using AWS KMS
 	asymmetricKey, err := client.Encrypt(context.Background(), &kms.EncryptInput{
 		KeyId:               &keyId,
-		Plaintext:           key,
+		Plaintext:           symmetricKey,
 		EncryptionAlgorithm: types.EncryptionAlgorithmSpecRsaesOaepSha256,
 	})
 	if err != nil {
-		logger.Errorf("Failed to encrypt asymmetric key: %v", err)
-		return nil, fmt.Errorf("failed to encrypt asymmetric key: %w", err)
+		logger.Errorf("Failed to encrypt symmetric key: %v", err)
+		return nil, fmt.Errorf("failed to encrypt symmetric key: %v", err)
 	}
 
-	var blob []byte
-	blob = append(blob, []byte(BLOB_HEADER)...)
-	blob = append(blob, asymmetricKey.CiphertextBlob...)
-	blob = append(blob, nonce...)
-	blob = append(blob, tag...)
-	blob = append(blob, ciphertext...)
+	blob := append([]byte{}, []byte(BLOB_HEADER)...)
+
+	components := [][]byte{
+		asymmetricKey.CiphertextBlob,
+		nonce,
+		tag,
+		ciphertext,
+	}
+
+	// Iterate over the components and append the length and data
+	for _, comp := range components {
+		blob = append(blob, uint32ToBytes(uint32(len(comp)))...)
+		blob = append(blob, comp...)
+	}
 
 	return blob, nil
+}
+
+func uint32ToBytes(n uint32) []byte {
+	buf := make([]byte, 4)
+	binary.BigEndian.PutUint32(buf, n)
+	return buf
 }
 
 func decryptAsymmetric(client *kms.Client, keyId string, cipherText []byte) ([]byte, error) {
@@ -114,29 +129,26 @@ func decryptAsymmetric(client *kms.Client, keyId string, cipherText []byte) ([]b
 		return nil, fmt.Errorf("invalid BLOB_HEADER")
 	}
 
-	keyDetails, err := client.DescribeKey(context.Background(), &kms.DescribeKeyInput{
-		KeyId: &keyId,
-	})
-	if err != nil {
-		logger.Errorf("Failed to get key details: %v", err)
-		return nil, fmt.Errorf("failed to get key details: %w", err)
-	}
-
-	keySize, ok := keySizeDetails[keyDetails.KeyMetadata.KeySpec]
-	if !ok {
-		return nil, fmt.Errorf("unsupported key spec: %v", keyDetails.KeyMetadata.KeySpec)
-	}
-
 	cipherText = cipherText[len(BLOB_HEADER):]
-	key := cipherText[:keySize]
+
+	// Extract components
+	components := make([][]byte, 4)
+	for i := range components {
+		compLen := binary.BigEndian.Uint32(cipherText[:4])
+		cipherText = cipherText[4:]
+		components[i] = cipherText[:compLen]
+		cipherText = cipherText[compLen:]
+	}
+
+	// Decrypt the symmetric key using AWS KMS
 	decryptedKey, err := client.Decrypt(context.Background(), &kms.DecryptInput{
 		KeyId:               &keyId,
-		CiphertextBlob:      key,
+		CiphertextBlob:      components[0], // key
 		EncryptionAlgorithm: types.EncryptionAlgorithmSpecRsaesOaepSha256,
 	})
 	if err != nil {
-		logger.Errorf("Failed to decrypt asymmetric key: %v", err)
-		return nil, fmt.Errorf("failed to decrypt asymmetric key: %w", err)
+		logger.Errorf("Failed to decrypt symmetric key: %v", err)
+		return nil, fmt.Errorf("failed to decrypt symmetric key: %w", err)
 	}
 
 	block, err := aes.NewCipher(decryptedKey.Plaintext)
@@ -149,11 +161,7 @@ func decryptAsymmetric(client *kms.Client, keyId string, cipherText []byte) ([]b
 		return nil, err
 	}
 
-	cipherText = cipherText[keySize:]
-	nonce, tag, ciphertext := cipherText[:NONCE_SIZE], cipherText[NONCE_SIZE:NONCE_SIZE+aesGCM.Overhead()], cipherText[NONCE_SIZE+aesGCM.Overhead():]
-
-	ciphertext = append(ciphertext, tag...)
-	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
+	plaintext, err := aesGCM.Open(nil, components[1], append(components[3], components[2]...), nil)
 	if err != nil {
 		logger.Errorf("Data tampering detected or decryption failed: %v", err)
 		return nil, err
