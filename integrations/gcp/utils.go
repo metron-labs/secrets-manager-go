@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"encoding/binary"
 	"encoding/pem"
 	"fmt"
 	"gcpkv/gcp/logger"
@@ -115,7 +116,7 @@ func encryptionAsymmetricKey(ctx context.Context, gcpKMCClient *kms.KeyManagemen
 		return nil, fmt.Errorf("unsupported key algorithm: %v", keyVersion.Algorithm)
 	}
 
-	ciphertext, err := rsa.EncryptOAEP(hashAlg.HashAlgorithm, rand.Reader, rsaKey, key, nil)
+	ciphertext, err := rsa.EncryptOAEP(hashAlg, rand.Reader, rsaKey, key, nil)
 	if err != nil {
 		return nil, fmt.Errorf("rsa.EncryptOAEP: %w", err)
 	}
@@ -185,12 +186,20 @@ func encryptAsymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClien
 		return nil, err
 	}
 
-	blob = append(blob, []byte(BLOB_HEADER)...)
-	blob = append(blob, encryptedKey...)
-	blob = append(blob, nonce...)
-	blob = append(blob, tag...)
-	blob = append(blob, ciphertext...)
+	blob = append([]byte{}, []byte(BLOB_HEADER)...)
 
+	components := [][]byte{
+		encryptedKey,
+		nonce,
+		tag,
+		ciphertext,
+	}
+
+	// Iterate over the components and append the length and data
+	for _, comp := range components {
+		blob = append(blob, uint32ToBytes(uint32(len(comp)))...)
+		blob = append(blob, comp...)
+	}
 	return blob, nil
 }
 
@@ -200,24 +209,16 @@ func decryptAsymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClien
 	}
 
 	cipherText = cipherText[len(BLOB_HEADER):]
-
-	keyVersion, err := gcpKMCClient.GetCryptoKeyVersion(ctx, &kmspb.GetCryptoKeyVersionRequest{
-		Name: keyResourceName,
-	})
-	if err != nil {
-		logger.Errorf("Failed to get key details: %v", err)
-		return nil, fmt.Errorf("failed to get key version: %w", err)
+	// Extract components
+	components := make([][]byte, 4)
+	for i := range components {
+		compLen := binary.BigEndian.Uint32(cipherText[:4])
+		cipherText = cipherText[4:]
+		components[i] = cipherText[:compLen]
+		cipherText = cipherText[compLen:]
 	}
 
-	hashAlg, ok := keyDetails[keyVersion.Algorithm]
-	if !ok {
-		logger.Errorf("Unsupported key algorithm: %v", keyVersion.Algorithm)
-		return nil, fmt.Errorf("unsupported key algorithm: %v", keyVersion.Algorithm)
-	}
-
-	keySize := hashAlg.KeySize
-	key := cipherText[:keySize]
-	decryptedKey, err := decryptAsymmetricKey(ctx, gcpKMCClient, keyResourceName, key)
+	decryptedKey, err := decryptAsymmetricKey(ctx, gcpKMCClient, keyResourceName, components[0])
 	if err != nil {
 		return nil, err
 	}
@@ -232,15 +233,17 @@ func decryptAsymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClien
 		return nil, err
 	}
 
-	cipherText = cipherText[keySize:]
-	nonce, tag, ciphertext := cipherText[:NONCE_SIZE], cipherText[NONCE_SIZE:NONCE_SIZE+aesGCM.Overhead()], cipherText[NONCE_SIZE+aesGCM.Overhead():]
-
-	ciphertext = append(ciphertext, tag...)
-	plaintext, err := aesGCM.Open(nil, nonce, ciphertext, nil)
+	plaintext, err := aesGCM.Open(nil, components[1], append(components[3], components[2]...), nil)
 	if err != nil {
 		logger.Errorf("Data tampering detected or decryption failed: %v", err)
 		return nil, err
 	}
 
 	return plaintext, nil
+}
+
+func uint32ToBytes(n uint32) []byte {
+	buf := make([]byte, 4)
+	binary.BigEndian.PutUint32(buf, n)
+	return buf
 }

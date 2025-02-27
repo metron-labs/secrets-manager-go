@@ -81,7 +81,7 @@ func (g *GoogleCloudKeyVaultStorage) Contains(key core.ConfigKey) bool {
 	return found
 }
 
-func (g *GoogleCloudKeyVaultStorage) changeKey(newKeyResourceName string) (bool, error) {
+func (g *GoogleCloudKeyVaultStorage) ChangeKey(newKeyResourceName string) (bool, error) {
 	oldKeyResourceName := g.keyResourceName
 	oldGCPKMCClient := g.gcpKMCClient
 	newGCPKeyManagementClient, err := kms.NewKeyManagementClient(context.Background(), option.WithCredentialsFile(g.gcpConfig.CredentialsFileLocation))

@@ -35,19 +35,14 @@ type GCPConfig struct {
 	KeyResourceName         string
 }
 
-type HashAlgorithm struct {
-	KeySize       int
-	HashAlgorithm hash.Hash
-}
-
-var keyDetails = map[kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm]HashAlgorithm{
-	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_2048_SHA256: {KeySize: 256, HashAlgorithm: sha256.New()},
-	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_3072_SHA256: {KeySize: 384, HashAlgorithm: sha256.New()},
-	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_4096_SHA256: {KeySize: 512, HashAlgorithm: sha256.New()},
-	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_4096_SHA512: {KeySize: 512, HashAlgorithm: sha512.New()},
-	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_2048_SHA1:   {KeySize: 256, HashAlgorithm: sha1.New()},
-	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_3072_SHA1:   {KeySize: 384, HashAlgorithm: sha1.New()},
-	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_4096_SHA1:   {KeySize: 512, HashAlgorithm: sha1.New()},
+var keyDetails = map[kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm]hash.Hash{
+	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_2048_SHA256: sha256.New(),
+	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_3072_SHA256: sha256.New(),
+	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_4096_SHA256: sha256.New(),
+	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_4096_SHA512: sha512.New(),
+	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_2048_SHA1:   sha1.New(),
+	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_3072_SHA1:   sha1.New(),
+	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_4096_SHA1:   sha1.New(),
 }
 
 func NewGCPKeyVaultStorage(configFileLocation string, gcpConfig *GCPConfig) *GoogleCloudKeyVaultStorage {
