@@ -9,13 +9,15 @@ import (
 
 func (a *AWSKeyVaultStorage) ReadStorage() map[string]interface{} {
 	if err := a.loadConfig(); err != nil {
-		logger.Errorf("%s", fmt.Sprintf("Failed to load config: %v", err))
+		logger.Errorf("Failed to load config: %v", err)
 		return nil
 	}
+
 	convertedConfig := make(map[string]interface{})
 	for k, v := range a.config {
 		convertedConfig[string(k)] = v
 	}
+
 	return convertedConfig
 }
 
@@ -57,10 +59,10 @@ func (a *AWSKeyVaultStorage) Set(key core.ConfigKey, value interface{}) map[stri
 func (a *AWSKeyVaultStorage) Delete(key core.ConfigKey) map[string]interface{} {
 	if _, found := a.config[key]; found {
 		delete(a.config, key)
-		logger.Debugf("%s", "Removed key: "+string(key))
+		logger.Debugf("Removed key: %s", string(key))
 		a.saveConfig(a.config)
 	} else {
-		logger.Warnf("%s", fmt.Sprintf("No key '%s' was found in config", string(key)))
+		logger.Warnf("No key '%s' was found in config", string(key))
 	}
 	return a.ReadStorage()
 }

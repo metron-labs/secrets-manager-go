@@ -1,3 +1,15 @@
+// -*- coding: utf-8 -*-
+
+//	_  __
+// | |/ /___ ___ _ __  ___ _ _ (R)
+// | ' </ -_) -_) '_ \/ -_) '_|
+// |_|\_\___\___| .__/\___|_|
+//              |_|
+//
+// Keeper Secrets Manager
+// Copyright 2025 Keeper Security Inc.
+// Contact: sm@keepersecurity.com
+
 package awskv
 
 import (
@@ -33,6 +45,7 @@ type AWSKeyVaultStorage struct {
 	awsConfig           *AWSConfig
 }
 
+// Creates a new instance of AWSKeyVaultStorage.
 func NewAWSKeyValueStorage(configFileLocation string, KeyARN string, awsSessionConfig *AWSConfig) *AWSKeyVaultStorage {
 	if configFileLocation == "" {
 		if envConfigFileLocation, ok := os.LookupEnv("KSM_CONFIG_FILE"); ok {
@@ -52,6 +65,7 @@ func NewAWSKeyValueStorage(configFileLocation string, KeyARN string, awsSessionC
 		return nil
 	}
 
+	// Generate a new AWS KMS client
 	client := kms.NewFromConfig(*cfg)
 	awsDetails := &AWSKeyVaultStorage{
 		configFileLocation:  configFileLocation,
@@ -63,6 +77,7 @@ func NewAWSKeyValueStorage(configFileLocation string, KeyARN string, awsSessionC
 	}
 
 	keyData, err := awsDetails.getKeyDetails()
+	// If key is not type of encrypt/decrypt, client operations will fail.
 	if err != nil && keyData.KeyMetadata.KeyUsage != types.KeyUsageTypeEncryptDecrypt {
 		logger.Errorf("Failed to create client secret credential: %v", err)
 		return nil
@@ -72,9 +87,11 @@ func NewAWSKeyValueStorage(configFileLocation string, KeyARN string, awsSessionC
 	if err != nil {
 		return nil
 	}
+
 	return awsDetails
 }
 
+// Loads the decrypted configuration from the config file if encrypted config is present, else encrypts the config.
 func (a *AWSKeyVaultStorage) loadConfig() error {
 	var config map[core.ConfigKey]interface{}
 	var jsonError error
@@ -151,6 +168,7 @@ func (a *AWSKeyVaultStorage) loadConfig() error {
 	return nil
 }
 
+// Saves the encrypted updated configuration to the config file and updates the hash of the config.
 func (a *AWSKeyVaultStorage) saveConfig(updatedConfig map[core.ConfigKey]interface{}) error {
 	configJson, err := json.Marshal(a.config)
 	if err != nil {
@@ -191,6 +209,7 @@ func (a *AWSKeyVaultStorage) saveConfig(updatedConfig map[core.ConfigKey]interfa
 	return nil
 }
 
+// Creates the config file if does not exist and encrypts it.
 func (a *AWSKeyVaultStorage) createConfigFileIfMissing() error {
 	if _, err := os.Stat(a.configFileLocation); !os.IsNotExist(err) {
 		logger.Infof("Config file already exists at: %s", a.configFileLocation)
@@ -212,6 +231,7 @@ func (a *AWSKeyVaultStorage) createConfigFileIfMissing() error {
 	return nil
 }
 
+// Retrieves the details of the KMS key.
 func (a *AWSKeyVaultStorage) getKeyDetails() (*kms.DescribeKeyOutput, error) {
 	keyDetails, err := a.kmsClient.DescribeKey(context.Background(), &kms.DescribeKeyInput{
 		KeyId: &a.keyARN,
@@ -225,11 +245,14 @@ func (a *AWSKeyVaultStorage) getKeyDetails() (*kms.DescribeKeyOutput, error) {
 	return keyDetails, nil
 }
 
+// createHash creates an MD5 hash of the provided config data.
 func (a *AWSKeyVaultStorage) createHash(config []byte) string {
 	hash := md5.Sum(config)
 	return hex.EncodeToString(hash[:])
 }
 
+// Retrieves the AWS configuration.
+// If the client ID, client secret, and region are provided, it returns the configuration with the provided values else it returns the default configuration.
 func getConfig(awsSessionConfig *AWSConfig) (*aws.Config, error) {
 	if awsSessionConfig.ClientID != "" && awsSessionConfig.ClientSecret != "" && awsSessionConfig.Region != "" {
 		return &aws.Config{
@@ -245,6 +268,7 @@ func getConfig(awsSessionConfig *AWSConfig) (*aws.Config, error) {
 	}
 }
 
+// Encrypts the configuration data and writes it to the config file.
 func (a *AWSKeyVaultStorage) encryptConfig(config []byte) error {
 	keydata, err := a.getKeyDetails()
 	if err != nil {
@@ -272,6 +296,7 @@ func (a *AWSKeyVaultStorage) encryptConfig(config []byte) error {
 	return nil
 }
 
+// Changes the KMS key used for encryption and decryption.
 func (a *AWSKeyVaultStorage) ChangeKey(newKeyARN string) (bool, error) {
 	oldKeyARN := a.keyARN
 	oldKMSClient := a.kmsClient

@@ -19,6 +19,7 @@ const (
 	BLOB_HEADER = "\xff\xff"
 )
 
+// Encrypts the message using a symmetric key stored in AWS KMS.
 func encryptSymmetric(client *kms.Client, keyId string, message []byte) ([]byte, error) {
 	if keyId == "" {
 		return nil, fmt.Errorf("keyId is empty")
@@ -40,9 +41,14 @@ func encryptSymmetric(client *kms.Client, keyId string, message []byte) ([]byte,
 	return cipherText.CiphertextBlob, nil
 }
 
+// Decrypts the given ciphertext using a symmetric key stored in AWS KMS.
 func decryptSymmetric(client *kms.Client, keyId string, cipherText []byte) ([]byte, error) {
 	if keyId == "" {
 		return nil, fmt.Errorf("keyId is empty")
+	}
+
+	if len(cipherText) == 0 {
+		return nil, fmt.Errorf("cipherText is empty")
 	}
 
 	plainText, err := client.Decrypt(context.Background(), &kms.DecryptInput{
@@ -56,6 +62,7 @@ func decryptSymmetric(client *kms.Client, keyId string, cipherText []byte) ([]by
 	return plainText.Plaintext, nil
 }
 
+// Encrypts the given message using an asymmetric key stored in AWS KMS.
 func encryptAsymmetric(client *kms.Client, keyId string, message []byte) ([]byte, error) {
 	if keyId == "" {
 		return nil, fmt.Errorf("keyId is required")
@@ -114,12 +121,14 @@ func encryptAsymmetric(client *kms.Client, keyId string, message []byte) ([]byte
 	return blob, nil
 }
 
+// uint32ToBytes converts a uint32 to a byte slice.
 func uint32ToBytes(n uint32) []byte {
 	buf := make([]byte, 4)
 	binary.BigEndian.PutUint32(buf, n)
 	return buf
 }
 
+// Decrypts the given ciphertext using an asymmetric key stored in AWS KMS.
 func decryptAsymmetric(client *kms.Client, keyId string, cipherText []byte) ([]byte, error) {
 	if keyId == "" {
 		return nil, fmt.Errorf("keyId is empty")

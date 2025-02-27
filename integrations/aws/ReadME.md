@@ -13,7 +13,7 @@ Prerequisites
 
 * Supports the Go-Lang Secrets Manager SDK.
 * Requires AWS packages: aws, config, credentials, kms, kms-types
-* Works with just AES/RSA key types with `Encrypt` and `Decrypt` permissions.
+* Works with AES/RSA key types with `Encrypt` and `Decrypt` permissions.
 
 Setup
 1. Install Secret-Manager-Go Package
