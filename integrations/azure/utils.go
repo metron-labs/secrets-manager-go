@@ -19,6 +19,7 @@ const (
 	BLOB_HEADER = "\xff\xff"
 )
 
+// Wrap the AES key using the key provided by the Azure Key Vault.
 func encryptBuffer(azureKvStorageCryptoClient *azkeys.Client, keyName string, keyVersion string, message []byte) ([]byte, error) {
 	key := make([]byte, 32)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
@@ -78,6 +79,7 @@ func uint32ToBytes(n uint32) []byte {
 	return buf
 }
 
+// UnWrap the AES key using the key provided by the Azure Key Vault.
 func decryptBuffer(azureKeyValueStorageCryptoClient *azkeys.Client, keyName string, keyVersion string, cipherText []byte) ([]byte, error) {
 	if !bytes.HasPrefix(cipherText, []byte(BLOB_HEADER)) {
 		return nil, fmt.Errorf("invalid BLOB_HEADER")

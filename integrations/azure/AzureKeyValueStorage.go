@@ -44,6 +44,7 @@ type AzureKeyValueStorage struct {
 	azureConfig         *AzureConfig
 }
 
+// Creates a new instance of AzureKeyValueStorage.
 func NewAzureKeyValueStorage(configFileLocation string, azSessionConfig *AzureConfig) *AzureKeyValueStorage {
 	if configFileLocation == "" {
 		if envConfigFileLocation, ok := os.LookupEnv("KSM_CONFIG_FILE"); ok {
@@ -63,6 +64,7 @@ func NewAzureKeyValueStorage(configFileLocation string, azSessionConfig *AzureCo
 		return nil
 	}
 
+	// Create a new Azure Key Vault client.
 	client, err := azkeys.NewClient(baseURL, credential, nil)
 	if err != nil {
 		logger.Errorf("Failed to create Azure Key Vault client: %v", err)
@@ -87,6 +89,7 @@ func NewAzureKeyValueStorage(configFileLocation string, azSessionConfig *AzureCo
 	return azureDetails
 }
 
+// Loads the decrypted configuration from the config file if encrypted config is present, else encrypts the config.
 func (s *AzureKeyValueStorage) loadConfig() error {
 	var config map[core.ConfigKey]interface{}
 	var jsonError error
@@ -154,27 +157,7 @@ func (s *AzureKeyValueStorage) loadConfig() error {
 	return nil
 }
 
-func (s *AzureKeyValueStorage) createConfigFileIfMissing() error {
-	if _, err := os.Stat(s.configFileLocation); !os.IsNotExist(err) {
-		logger.Infof("Config file already exists at: %s", s.configFileLocation)
-		return nil
-	}
-
-	dir := filepath.Dir(s.configFileLocation)
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		if err := os.MkdirAll(dir, os.ModePerm); err != nil {
-			return fmt.Errorf("failed to create directory %s: %w", dir, err)
-		}
-	}
-
-	if err := s.encryptConfig([]byte("{}")); err != nil {
-		return err
-	}
-
-	logger.Infof("Config file created at: %s", s.configFileLocation)
-	return nil
-}
-
+// Saves the encrypted updated configuration to the config file and updates the hash of the config.
 func (s *AzureKeyValueStorage) saveConfig(updatedConfig map[core.ConfigKey]interface{}) error {
 	config := s.config
 	if config == nil {
@@ -220,50 +203,32 @@ func (s *AzureKeyValueStorage) saveConfig(updatedConfig map[core.ConfigKey]inter
 	return nil
 }
 
+// Creates the config file if does not exist and encrypts it.
+func (s *AzureKeyValueStorage) createConfigFileIfMissing() error {
+	if _, err := os.Stat(s.configFileLocation); !os.IsNotExist(err) {
+		logger.Infof("Config file already exists at: %s", s.configFileLocation)
+		return nil
+	}
+
+	dir := filepath.Dir(s.configFileLocation)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		if err := os.MkdirAll(dir, os.ModePerm); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", dir, err)
+		}
+	}
+
+	if err := s.encryptConfig([]byte("{}")); err != nil {
+		return err
+	}
+
+	logger.Infof("Config file created at: %s", s.configFileLocation)
+	return nil
+}
+
+// creates an MD5 hash of the provided config data.
 func (s *AzureKeyValueStorage) createHash(data []byte) string {
 	hash := md5.Sum(data)
 	return hex.EncodeToString(hash[:])
-}
-
-func (s *AzureKeyValueStorage) ChangeKey(newKeyURL string) (bool, error) {
-	oldState := struct {
-		vaultURL, keyName, keyVersion string
-		cryptoClient                  *azkeys.Client
-	}{
-		s.azureConfig.KeyURL, s.keyName, s.keyVersion, s.cryptoClient,
-	}
-
-	vaultURL, keyName, keyVersion, err := fetchKeyDetails(newKeyURL)
-	if err != nil {
-		logger.Errorf("Failed to extract key details from URL '%s': %v", newKeyURL, err)
-		return false, fmt.Errorf("failed to extract key details from URL '%s': %w", newKeyURL, err)
-	}
-
-	s.azureConfig.KeyURL = newKeyURL
-	s.keyName = keyName
-	s.keyVersion = keyVersion
-
-	cred, err := fetchCredentials(s.azureConfig)
-	if err != nil {
-		return false, err
-	}
-
-	client, err := azkeys.NewClient(vaultURL, cred, nil)
-	if err != nil {
-		return false, fmt.Errorf("failed to create Azure Key Vault client: %w", err)
-	}
-
-	s.cryptoClient = client
-	if err := s.saveConfig(s.config); err != nil {
-		s.azureConfig.KeyURL = oldState.vaultURL
-		s.keyName = oldState.keyName
-		s.keyVersion = oldState.keyVersion
-		s.cryptoClient = oldState.cryptoClient
-		logger.Errorf("Failed to change the key to '%s' for config '%s': %v", newKeyURL, s.configFileLocation, err)
-		return false, fmt.Errorf("failed to change the key for %s: %w", s.configFileLocation, err)
-	}
-
-	return true, nil
 }
 
 func fetchCredentials(azSessionConfig *AzureConfig) (azcore.TokenCredential, error) {
