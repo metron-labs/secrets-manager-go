@@ -45,6 +45,7 @@ var keyDetails = map[kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm]hash.Hash{
 	kmspb.CryptoKeyVersion_RSA_DECRYPT_OAEP_4096_SHA1:   sha1.New(),
 }
 
+// Creates a new instance of GoogleCloudKeyVaultStorage with the provided configuration.
 func NewGCPKeyVaultStorage(configFileLocation string, gcpConfig *GCPConfig) *GoogleCloudKeyVaultStorage {
 	ctx := context.Background()
 	if configFileLocation == "" {
@@ -85,6 +86,7 @@ func NewGCPKeyVaultStorage(configFileLocation string, gcpConfig *GCPConfig) *Goo
 	return gcpStorage
 }
 
+// Loads the decrypted configuration from the config file if encrypted config is present, else encrypts the config.
 func (g *GoogleCloudKeyVaultStorage) loadConfig() error {
 	ctx := context.Background()
 	var config map[core.ConfigKey]interface{}
@@ -163,6 +165,7 @@ func (g *GoogleCloudKeyVaultStorage) loadConfig() error {
 	return nil
 }
 
+// Saves the encrypted updated configuration to the config file and updates the hash of the config.
 func (g *GoogleCloudKeyVaultStorage) saveConfig(updatedConfig map[core.ConfigKey]interface{}) error {
 	ctx := context.Background()
 	configJson, err := json.Marshal(g.config)
@@ -204,11 +207,13 @@ func (g *GoogleCloudKeyVaultStorage) saveConfig(updatedConfig map[core.ConfigKey
 	return nil
 }
 
+// Creates a hash of the given configuration data.
 func (g *GoogleCloudKeyVaultStorage) createHash(config []byte) string {
 	hash := md5.Sum(config)
 	return hex.EncodeToString(hash[:])
 }
 
+// Creates the config file if it does not already exist.
 func (g *GoogleCloudKeyVaultStorage) createConfigFileIfMissing() error {
 	if _, err := os.Stat(g.configFileLocation); !os.IsNotExist(err) {
 		logger.Infof("Config file already exists at: %s", g.configFileLocation)
@@ -230,7 +235,9 @@ func (g *GoogleCloudKeyVaultStorage) createConfigFileIfMissing() error {
 	return nil
 }
 
+// Retrieves the details of the specified key from Google Cloud KMS.
 func getKeyDetails(ctx context.Context, client *kms.KeyManagementClient, keyResourceName string) (*kmspb.CryptoKey, error) {
+	// Remove the cryptoKeyVersions/<version> from the keyResourceName
 	index := strings.Index(keyResourceName, "/cryptoKeyVersions/")
 	if index != -1 {
 		keyResourceName = keyResourceName[:index]
@@ -240,6 +247,7 @@ func getKeyDetails(ctx context.Context, client *kms.KeyManagementClient, keyReso
 		Name: keyResourceName,
 	}
 
+	// Fetch the key details from GCP
 	resp, err := client.GetCryptoKey(ctx, req)
 	if err != nil {
 		logger.Errorf("Failed to get key details: %v", err)
@@ -249,6 +257,7 @@ func getKeyDetails(ctx context.Context, client *kms.KeyManagementClient, keyReso
 	return resp, nil
 }
 
+// Encrypts the configuration data and writes it to the config file.
 func (g *GoogleCloudKeyVaultStorage) encryptConfig(ctx context.Context, config []byte) error {
 	keyDetails, err := getKeyDetails(ctx, g.gcpKMCClient, g.gcpConfig.KeyResourceName)
 	if err != nil {

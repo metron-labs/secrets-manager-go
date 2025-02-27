@@ -23,9 +23,9 @@ import (
 
 const (
 	BLOB_HEADER = "\xff\xff"
-	NONCE_SIZE  = 12
 )
 
+// Encrypts the message using a symmetric key stored in Google Cloud KMS.
 func encryptionSymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClient, keyResourceName string, message []byte) ([]byte, error) {
 	if keyResourceName == "" {
 		logger.Errorf("keyResourceName is empty")
@@ -48,9 +48,9 @@ func encryptionSymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementCli
 	}
 
 	return text.Ciphertext, nil
-
 }
 
+// Decrypts the ciphertext using a symmetric key stored in Google Cloud KMS.
 func decryptionSymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClient, keyResourceName string, cipherText []byte) ([]byte, error) {
 	if keyResourceName == "" {
 		return nil, fmt.Errorf("keyResourceName is empty")
@@ -79,6 +79,7 @@ func decryptionSymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementCli
 	return plainText.Plaintext, nil
 }
 
+// Encrypts the key using an asymmetric key stored in Google Cloud KMS.
 func encryptionAsymmetricKey(ctx context.Context, gcpKMCClient *kms.KeyManagementClient, keyResourceName string, key []byte) ([]byte, error) {
 	response, err := gcpKMCClient.GetPublicKey(ctx, &kmspb.GetPublicKeyRequest{
 		Name: keyResourceName,
@@ -124,6 +125,7 @@ func encryptionAsymmetricKey(ctx context.Context, gcpKMCClient *kms.KeyManagemen
 	return ciphertext, nil
 }
 
+// Decrypts the ciphertext key using an asymmetric key stored in Google Cloud KMS.
 func decryptAsymmetricKey(ctx context.Context, gcpKMCClient *kms.KeyManagementClient, keyResourceName string, key []byte) ([]byte, error) {
 	crc32c := func(data []byte) uint32 {
 		t := crc32.MakeTable(crc32.Castagnoli)
@@ -154,6 +156,7 @@ func decryptAsymmetricKey(ctx context.Context, gcpKMCClient *kms.KeyManagementCl
 	return result.Plaintext, nil
 }
 
+// Encrypts the message using an asymmetric key stored in Google Cloud KMS.
 func encryptAsymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClient, keyResourceName string, message []byte) ([]byte, error) {
 	var blob []byte
 	key := make([]byte, 32)
@@ -203,6 +206,7 @@ func encryptAsymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClien
 	return blob, nil
 }
 
+// Decrypts the given ciphertext using an asymmetric key stored in Google Cloud KMS.
 func decryptAsymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClient, keyResourceName string, cipherText []byte) ([]byte, error) {
 	if !bytes.HasPrefix(cipherText, []byte(BLOB_HEADER)) {
 		return nil, fmt.Errorf("invalid BLOB_HEADER")

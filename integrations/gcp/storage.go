@@ -12,7 +12,7 @@ import (
 
 func (g *GoogleCloudKeyVaultStorage) ReadStorage() map[string]interface{} {
 	if err := g.loadConfig(); err != nil {
-		logger.Errorf("%s", fmt.Sprintf("Failed to load config: %v", err))
+		logger.Errorf("Failed to load config: %v", err)
 		return nil
 	}
 	convertedConfig := make(map[string]interface{})
@@ -31,7 +31,7 @@ func (g *GoogleCloudKeyVaultStorage) SaveStorage(updatedConfig map[string]interf
 	}
 
 	if err := g.saveConfig(convertedConfig); err != nil {
-		logger.Errorf("%s", fmt.Sprintf("Failed to save config: %v", err))
+		logger.Errorf("Failed to save config: %v", err)
 	}
 }
 
@@ -62,7 +62,7 @@ func (g *GoogleCloudKeyVaultStorage) Delete(key core.ConfigKey) map[string]inter
 		logger.Debugf("%s", "Removed key: "+string(key))
 		g.saveConfig(g.config)
 	} else {
-		logger.Warnf("%s", fmt.Sprintf("No key '%s' was found in config", string(key)))
+		logger.Warnf("No key '%s' was found in config", string(key))
 	}
 	return g.ReadStorage()
 }
