@@ -85,6 +85,10 @@ func decryptBuffer(azureKeyValueStorageCryptoClient *azkeys.Client, keyName stri
 		return nil, fmt.Errorf("invalid BLOB_HEADER")
 	}
 
+	if len(cipherText) == 0 {
+		return nil, fmt.Errorf("Empty encoded cipher text")
+	}
+
 	cipherText = cipherText[len(BLOB_HEADER):]
 
 	// Extract components
