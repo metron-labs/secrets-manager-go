@@ -24,7 +24,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
 	"github.com/keeper-security/secrets-manager-go/core"
-	"github.com/metron-labs/secrets-manager-go/azurekv/azure/logger"
+	"github.com/metron-labs/secrets-manager-go/azure/logger"
 )
 
 type AzureConfig struct {
