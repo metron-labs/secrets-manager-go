@@ -187,7 +187,7 @@ func (s *AzureKeyValueStorage) saveConfig(updatedConfig map[core.ConfigKey]inter
 	}
 
 	if !force && configHash == s.lastSavedConfigHash {
-		fmt.Println("Skipped config JSON save. No changes detected.")
+		logger.Info("Skipped config JSON save. No changes detected.")
 		return nil
 	}
 
