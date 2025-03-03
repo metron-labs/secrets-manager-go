@@ -86,7 +86,7 @@ func decryptBuffer(azureKeyValueStorageCryptoClient *azkeys.Client, keyName stri
 	}
 
 	if len(cipherText) == 0 {
-		return nil, fmt.Errorf("Empty encoded cipher text")
+		return nil, fmt.Errorf("empty encoded cipher text")
 	}
 
 	cipherText = cipherText[len(BLOB_HEADER):]
