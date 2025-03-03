@@ -24,7 +24,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
 	"github.com/keeper-security/secrets-manager-go/core"
-	"github.com/keeper-security/secrets-manager-go/integrations/azurekv/logger"
+	"github.com/keeper-security/secrets-manager-go/integrations/azure/logger"
 )
 
 type AzureConfig struct {
@@ -330,4 +330,35 @@ func (s *AzureKeyValueStorage) ChangeKey(newKeyURL string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (s *AzureKeyValueStorage) DecryptConfig(autosave bool) (string, error) {
+	var ciphertext []byte
+	var plaintext []byte
+	ciphertext, err := os.ReadFile(s.configFileLocation)
+	if err != nil {
+		return "", fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	if len(ciphertext) == 0 {
+		logger.Warnf("empty config file %s", s.configFileLocation)
+		return "", nil
+	}
+
+	plaintext, err = decryptBuffer(s.cryptoClient, s.keyName, s.keyVersion, ciphertext)
+	if err != nil {
+		return "", fmt.Errorf("failed to decrypt config file: %w", err)
+	}
+
+	if len(plaintext) == 0 {
+		logger.Error("empty config file")
+		return "", fmt.Errorf("empty config file")
+	} else if autosave {
+		if err := os.WriteFile(s.configFileLocation, plaintext, 0644); err != nil {
+			logger.Error(fmt.Sprintf("failed to write decrypted config file %s: %v", s.configFileLocation, err))
+			return "", fmt.Errorf("failed to write decrypted config file %s", s.configFileLocation)
+		}
+	}
+
+	return string(plaintext), nil
 }

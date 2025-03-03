@@ -1,4 +1,4 @@
-module github.com/keeper-security/secrets-manager-go/integrations/azurekv
+module github.com/keeper-security/secrets-manager-go/integrations/azure
 
 go 1.23.5
 
