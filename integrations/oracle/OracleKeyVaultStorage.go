@@ -116,7 +116,7 @@ func (o *OracleKeyVaultStorage) loadConfig() error {
 
 	if err := json.Unmarshal(contents, &config); err == nil {
 		o.config = config
-		if err := o.saveConfig(config); err != nil {
+		if err := o.saveConfig(config, false); err != nil {
 			logger.Errorf("Failed to save config: %v", err)
 			return err
 		}
@@ -173,7 +173,7 @@ func (o *OracleKeyVaultStorage) loadConfig() error {
 }
 
 // Saves the encrypted updated configuration to the config file and updates the hash of the config.
-func (o *OracleKeyVaultStorage) saveConfig(updatedConfig map[core.ConfigKey]interface{}) error {
+func (o *OracleKeyVaultStorage) saveConfig(updatedConfig map[core.ConfigKey]interface{}, force bool) error {
 	configJson, err := json.Marshal(o.config)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
@@ -196,7 +196,7 @@ func (o *OracleKeyVaultStorage) saveConfig(updatedConfig map[core.ConfigKey]inte
 		}
 	}
 
-	if configHash == o.lastSavedConfigHash {
+	if !force && configHash == o.lastSavedConfigHash {
 		logger.Info("Skipped config JSON save. No changes detected.")
 		return nil
 	}
@@ -274,18 +274,18 @@ func (o *OracleKeyVaultStorage) encryptConfig(config []byte) error {
 // Update and save the config according to new Key.
 func (o *OracleKeyVaultStorage) ChangeKey(updatedKeyConfig *KeyConfig) (bool, error) {
 	oldKeyConfig := o.keyConfig
-	oldOracleKMSClient := o.oracleKMSClient
-	client, err := keymanagement.NewKmsCryptoClientWithConfigurationProvider(common.DefaultConfigProvider(), updatedKeyConfig.VaultManagementEndpoint)
+	oldKMSClient := o.oracleKMSClient
+	newKMSClient, err := keymanagement.NewKmsCryptoClientWithConfigurationProvider(common.DefaultConfigProvider(), updatedKeyConfig.VaultCryptoEndpoint)
 	if err != nil {
 		logger.Errorf("Failed to create Oracle KMS crypto client: %v", err)
 		return false, nil
 	}
 
 	o.keyConfig = updatedKeyConfig
-	o.oracleKMSClient = client
-	if err := o.saveConfig(o.config); err != nil {
+	o.oracleKMSClient = newKMSClient
+	if err := o.saveConfig(o.config, true); err != nil {
 		o.keyConfig = oldKeyConfig
-		o.oracleKMSClient = oldOracleKMSClient
+		o.oracleKMSClient = oldKMSClient
 		logger.Errorf("Failed to change the key to '%v' for config '%s': %v", updatedKeyConfig, o.configFileLocation, err)
 		return false, fmt.Errorf("failed to change the key for %s: %w", o.configFileLocation, err)
 	}

@@ -27,7 +27,7 @@ func (o *OracleKeyVaultStorage) SaveStorage(updatedConfig map[string]interface{}
 		}
 	}
 
-	if err := o.saveConfig(convertedConfig); err != nil {
+	if err := o.saveConfig(convertedConfig, false); err != nil {
 		logger.Errorf("Failed to save config: %v", err)
 	}
 }
@@ -57,7 +57,7 @@ func (o *OracleKeyVaultStorage) Delete(key core.ConfigKey) map[string]interface{
 	if _, found := o.config[key]; found {
 		delete(o.config, key)
 		logger.Debugf("%s", "Removed key: "+string(key))
-		o.saveConfig(o.config)
+		o.saveConfig(o.config, false)
 	} else {
 		logger.Warnf("No key '%s' was found in config", string(key))
 	}
