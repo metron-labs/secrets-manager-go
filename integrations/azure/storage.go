@@ -2,7 +2,7 @@ package azurekv
 
 import (
 	"github.com/keeper-security/secrets-manager-go/core"
-	"github.com/metron-labs/secrets-manager-go/azure/logger"
+	"github.com/keeper-security/secrets-manager-go/integrations/azurekv/logger"
 )
 
 func (a *AzureKeyValueStorage) ReadStorage() map[string]interface{} {

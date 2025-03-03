@@ -1,4 +1,4 @@
-module github.com/metron-labs/secrets-manager-go
+module github.com/keeper-security/secrets-manager-go/integrations/azurekv
 
 go 1.23.5
 

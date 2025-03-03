@@ -24,7 +24,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
 	"github.com/keeper-security/secrets-manager-go/core"
-	"github.com/metron-labs/secrets-manager-go/azure/logger"
+	"github.com/keeper-security/secrets-manager-go/integrations/azurekv/logger"
 )
 
 type AzureConfig struct {
@@ -298,6 +298,7 @@ func (s *AzureKeyValueStorage) ChangeKey(newKeyURL string) (bool, error) {
 		s.azureConfig.KeyURL, s.keyName, s.keyVersion, s.cryptoClient,
 	}
 
+	// Extract the key details like vaultURL, keyname and keyversion from the new key URL `https://<vault-name>.vault.azure.net/keys/<key-name>/<version>`
 	vaultURL, keyName, keyVersion, err := fetchKeyDetails(newKeyURL)
 	if err != nil {
 		logger.Errorf("Failed to extract key details from URL '%s': %v", newKeyURL, err)

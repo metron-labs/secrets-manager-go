@@ -12,7 +12,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
-	"github.com/metron-labs/secrets-manager-go/azure/logger"
+	"github.com/keeper-security/secrets-manager-go/integrations/azurekv/logger"
 )
 
 const (
