@@ -33,7 +33,7 @@ import (
 	azurekv "github.com/keeper-security/secrets-manager-go/azurekv"
 )
 
-clientOptions := &ksm.ClientOptions{
+clientOptions := &core.ClientOptions{
 	Token:  "[One Time Access Token]",
 	Config: azurekv.NewAzureKeyValueStorage("ksm-config.json", &azurekv.AzureConfig{
 		TenantID:     "<Some Tenant ID>",
