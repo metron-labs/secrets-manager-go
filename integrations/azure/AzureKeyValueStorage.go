@@ -11,7 +11,6 @@
 package azurekv
 
 import (
-	"azurekv/logger"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -24,6 +23,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore"
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
+	"github.com/keeper-security/secrets-manager-go/azurekv/azure/logger"
 	"github.com/keeper-security/secrets-manager-go/core"
 )
 

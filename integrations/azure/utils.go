@@ -1,7 +1,6 @@
 package azurekv
 
 import (
-	"azurekv/logger"
 	"bytes"
 	"context"
 	"crypto/aes"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
+	"github.com/keeper-security/secrets-manager-go/azurekv/azure/logger"
 )
 
 const (

@@ -1,8 +1,7 @@
 package azurekv
 
 import (
-	"azurekv/logger"
-
+	"github.com/keeper-security/secrets-manager-go/azurekv/azure/logger"
 	"github.com/keeper-security/secrets-manager-go/core"
 )
 
