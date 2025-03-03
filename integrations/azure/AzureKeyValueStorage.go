@@ -11,7 +11,6 @@
 package azurekv
 
 import (
-	"azurekv/logger"
 	"crypto/md5"
 	"encoding/hex"
 	"encoding/json"
@@ -25,6 +24,7 @@ import (
 	"github.com/Azure/azure-sdk-for-go/sdk/azidentity"
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
 	"github.com/keeper-security/secrets-manager-go/core"
+	"github.com/keeper-security/secrets-manager-go/integrations/azurekv/logger"
 )
 
 type AzureConfig struct {
@@ -112,7 +112,7 @@ func (s *AzureKeyValueStorage) loadConfig() error {
 
 	if err := json.Unmarshal(contents, &config); err == nil {
 		s.config = config
-		if err := s.saveConfig(config); err != nil {
+		if err := s.saveConfig(config, false); err != nil {
 			return err
 		}
 
@@ -158,7 +158,7 @@ func (s *AzureKeyValueStorage) loadConfig() error {
 }
 
 // Saves the encrypted updated configuration to the config file and updates the hash of the config.
-func (s *AzureKeyValueStorage) saveConfig(updatedConfig map[core.ConfigKey]interface{}) error {
+func (s *AzureKeyValueStorage) saveConfig(updatedConfig map[core.ConfigKey]interface{}, force bool) error {
 	config := s.config
 	if config == nil {
 		config = make(map[core.ConfigKey]interface{})
@@ -186,8 +186,8 @@ func (s *AzureKeyValueStorage) saveConfig(updatedConfig map[core.ConfigKey]inter
 		}
 	}
 
-	if configHash == s.lastSavedConfigHash {
-		fmt.Println("Skipped config JSON save. No changes detected.")
+	if !force && configHash == s.lastSavedConfigHash {
+		logger.Info("Skipped config JSON save. No changes detected.")
 		return nil
 	}
 
@@ -287,4 +287,47 @@ func fetchKeyDetails(keyURL string) (string, string, string, error) {
 	keyName := pathSegments[1]
 	keyVersion := pathSegments[2]
 	return vaultURL, keyName, keyVersion, nil
+}
+
+// Changes the key used to encrypt/decrypt the configuration.
+func (s *AzureKeyValueStorage) ChangeKey(newKeyURL string) (bool, error) {
+	oldState := struct {
+		vaultURL, keyName, keyVersion string
+		cryptoClient                  *azkeys.Client
+	}{
+		s.azureConfig.KeyURL, s.keyName, s.keyVersion, s.cryptoClient,
+	}
+
+	// Extract the key details like vaultURL, keyname and keyversion from the new key URL `https://<vault-name>.vault.azure.net/keys/<key-name>/<version>`
+	vaultURL, keyName, keyVersion, err := fetchKeyDetails(newKeyURL)
+	if err != nil {
+		logger.Errorf("Failed to extract key details from URL '%s': %v", newKeyURL, err)
+		return false, fmt.Errorf("failed to extract key details from URL '%s': %w", newKeyURL, err)
+	}
+
+	s.azureConfig.KeyURL = newKeyURL
+	s.keyName = keyName
+	s.keyVersion = keyVersion
+
+	cred, err := fetchCredentials(s.azureConfig)
+	if err != nil {
+		return false, err
+	}
+
+	client, err := azkeys.NewClient(vaultURL, cred, nil)
+	if err != nil {
+		return false, fmt.Errorf("failed to create Azure Key Vault client: %w", err)
+	}
+
+	s.cryptoClient = client
+	if err := s.saveConfig(s.config, true); err != nil {
+		s.azureConfig.KeyURL = oldState.vaultURL
+		s.keyName = oldState.keyName
+		s.keyVersion = oldState.keyVersion
+		s.cryptoClient = oldState.cryptoClient
+		logger.Errorf("Failed to change the key to '%s' for config '%s': %v", newKeyURL, s.configFileLocation, err)
+		return false, fmt.Errorf("failed to change the key for %s: %w", s.configFileLocation, err)
+	}
+
+	return true, nil
 }

@@ -1,7 +1,6 @@
 package azurekv
 
 import (
-	"azurekv/logger"
 	"bytes"
 	"context"
 	"crypto/aes"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/Azure/azure-sdk-for-go/sdk/azcore/to"
 	"github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys"
+	"github.com/keeper-security/secrets-manager-go/integrations/azurekv/logger"
 )
 
 const (
@@ -86,7 +86,7 @@ func decryptBuffer(azureKeyValueStorageCryptoClient *azkeys.Client, keyName stri
 	}
 
 	if len(cipherText) == 0 {
-		return nil, fmt.Errorf("Empty encoded cipher text")
+		return nil, fmt.Errorf("empty encoded cipher text")
 	}
 
 	cipherText = cipherText[len(BLOB_HEADER):]
