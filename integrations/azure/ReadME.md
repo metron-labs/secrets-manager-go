@@ -72,6 +72,12 @@ if err != nil {
 	// do something
 }
 
+plainText, err := cfg.DecryptConfig(true)
+if err != nil {
+	// do something
+}
+
+fmt.Println(plainText)
 ```
 The storage will require an Azure Key URL, as well Secrets Manager configuration which will be encrypted by Azure Key Vault.
 
