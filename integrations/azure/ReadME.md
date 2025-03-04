@@ -59,7 +59,6 @@ for _, record := range records {
 		fmt.Println(record.Title())
 }
 
-
 updatedKey := azurekv.AzureConfig{
 		TenantID:     "<Updated Tenant ID>",
 		ClientID:     "<Updated Client ID>",
