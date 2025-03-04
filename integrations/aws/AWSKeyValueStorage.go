@@ -336,7 +336,7 @@ func (a *awsKeyVaultStorage) DecryptConfig(autosave bool) (string, error) {
 
 	keydata, err := a.getKeyDetails()
 	if err != nil {
-
+		return "", fmt.Errorf("failed to get key details: %w", err)
 	}
 
 	if keydata.KeyMetadata.KeySpec == types.KeySpecSymmetricDefault {
