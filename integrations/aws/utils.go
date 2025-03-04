@@ -1,7 +1,6 @@
 package awskv
 
 import (
-	"awskv/aws/logger"
 	"bytes"
 	"context"
 	"crypto/aes"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/kms/types"
+	"github.com/keeper-security/secrets-manager-go/integrations/aws/logger"
 )
 
 const (

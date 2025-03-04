@@ -20,22 +20,49 @@ Setup
 
 The Secrets Manager AWS package are located in the Keeper Secrets Manager storage package which can be installed using 
 
-> `go get github.com/keeper-security/secrets-manager-go/core`
+> `go get github.com/keeper-security/secrets-manager-go/integrations/aws`
 Configure AWS Connection
 
 configuration variables can be provided as 
 
 ```
-    import awskv "github.com/keeper-security/secrets-manager-go/awskv"
-    
-    clientOptions := &ksm.ClientOptions{
-		Token:  "[One Time Access Token]",
-		Config: awskv.NewAWSKeyValueStorage(<config-file-path-with-its-name>, <key-arn>, &awskv.AWSConfig{
-			ClientID:     "<Some Client ID>",
-			ClientSecret: "<Some Client Secret>",
-			Region:       "<Cloud Region>",
-		}),
-	}
+import awskv "github.com/keeper-security/secrets-manager-go/awskv"
+cgf := awskv.NewAWSKeyValueStorage(<config-file-path-with-its-name>, <key-arn>, &awskv.AWSConfig{
+		ClientID:     "<Some Client ID>",
+		ClientSecret: "<Some Client Secret>",
+		Region:       "<Cloud Region>",
+})
+
+clientOptions := &ksm.ClientOptions{
+	Token:  "[One Time Access Token]",
+	Config: cfg,
+}
+
+secrets_manager := core.NewSecretsManager(clientOptions)
+
+// Fetch secrets from Keeper Security Vault 
+record_uids := []string{}
+records, err := secrets_manager.GetSecrets(record_uids)
+if err != nil {
+	// do something
+}
+
+for _, record := range records {
+		// do something with record
+		fmt.Println(record.Title())
+}
+
+newKeyARN := awskv.AWSConfig{
+		ClientID:     "<Updated Client ID>",
+		ClientSecret: "<Updated Client Secret>",
+		Region:       "<Updated Region>",
+}
+
+// isChanged gives boolean value to check the key is changed or not.
+isChanged, err := cfg.ChangeKey(newKeyARN)
+if err != nil {
+	// do something
+}
 ```
 The storage will require an AWS credentials if not present it will fetch from environment, as well Secrets Manager configuration which will be encrypted by AWS Key Management.
 

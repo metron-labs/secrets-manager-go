@@ -13,7 +13,6 @@
 package awskv
 
 import (
-	"awskv/aws/logger"
 	"context"
 	"crypto/md5"
 	"encoding/hex"
@@ -28,6 +27,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/kms/types"
 	"github.com/keeper-security/secrets-manager-go/core"
+	"github.com/keeper-security/secrets-manager-go/integrations/aws/logger"
 )
 
 type AWSConfig struct {
@@ -36,7 +36,7 @@ type AWSConfig struct {
 	Region       string
 }
 
-type AWSKeyVaultStorage struct {
+type awsKeyVaultStorage struct {
 	configFileLocation  string
 	config              map[core.ConfigKey]interface{}
 	lastSavedConfigHash string
@@ -46,7 +46,7 @@ type AWSKeyVaultStorage struct {
 }
 
 // Creates a new instance of AWSKeyVaultStorage.
-func NewAWSKeyValueStorage(configFileLocation string, KeyARN string, awsSessionConfig *AWSConfig) *AWSKeyVaultStorage {
+func NewAWSKeyValueStorage(configFileLocation string, KeyARN string, awsSessionConfig *AWSConfig) *awsKeyVaultStorage {
 	if configFileLocation == "" {
 		if envConfigFileLocation, ok := os.LookupEnv("KSM_CONFIG_FILE"); ok {
 			configFileLocation = envConfigFileLocation
@@ -57,17 +57,18 @@ func NewAWSKeyValueStorage(configFileLocation string, KeyARN string, awsSessionC
 
 	cfg, err := getConfig(awsSessionConfig)
 	if err != nil {
+		logger.Errorf("Failed to create client secret credential: %v", err)
 		return nil
 	}
 
 	if KeyARN == "" {
-		logger.Errorf("Failed to create client secret credential: %v", err)
+		logger.Errorf("Key ARN is empty %v", err)
 		return nil
 	}
 
 	// Generate a new AWS KMS client
 	client := kms.NewFromConfig(*cfg)
-	awsDetails := &AWSKeyVaultStorage{
+	awsDetails := &awsKeyVaultStorage{
 		configFileLocation:  configFileLocation,
 		config:              make(map[core.ConfigKey]interface{}),
 		lastSavedConfigHash: "",
@@ -92,7 +93,7 @@ func NewAWSKeyValueStorage(configFileLocation string, KeyARN string, awsSessionC
 }
 
 // Loads the decrypted configuration from the config file if encrypted config is present, else encrypts the config.
-func (a *AWSKeyVaultStorage) loadConfig() error {
+func (a *awsKeyVaultStorage) loadConfig() error {
 	var config map[core.ConfigKey]interface{}
 	var jsonError error
 	var decryptionError bool
@@ -115,7 +116,7 @@ func (a *AWSKeyVaultStorage) loadConfig() error {
 
 	if err := json.Unmarshal(contents, &config); err == nil {
 		a.config = config
-		if err := a.saveConfig(config); err != nil {
+		if err := a.saveConfig(config, false); err != nil {
 			return err
 		}
 
@@ -132,6 +133,7 @@ func (a *AWSKeyVaultStorage) loadConfig() error {
 	if jsonError != nil {
 		keydata, err := a.getKeyDetails()
 		if err != nil {
+			return fmt.Errorf("failed to get key details: %w", err)
 		}
 
 		if keydata.KeyMetadata.KeySpec == types.KeySpecSymmetricDefault {
@@ -169,7 +171,7 @@ func (a *AWSKeyVaultStorage) loadConfig() error {
 }
 
 // Saves the encrypted updated configuration to the config file and updates the hash of the config.
-func (a *AWSKeyVaultStorage) saveConfig(updatedConfig map[core.ConfigKey]interface{}) error {
+func (a *awsKeyVaultStorage) saveConfig(updatedConfig map[core.ConfigKey]interface{}, force bool) error {
 	configJson, err := json.Marshal(a.config)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
@@ -192,7 +194,7 @@ func (a *AWSKeyVaultStorage) saveConfig(updatedConfig map[core.ConfigKey]interfa
 		}
 	}
 
-	if configHash == a.lastSavedConfigHash {
+	if !force && configHash == a.lastSavedConfigHash {
 		fmt.Println("Skipped config JSON save. No changes detected.")
 		return nil
 	}
@@ -210,7 +212,7 @@ func (a *AWSKeyVaultStorage) saveConfig(updatedConfig map[core.ConfigKey]interfa
 }
 
 // Creates the config file if does not exist and encrypts it.
-func (a *AWSKeyVaultStorage) createConfigFileIfMissing() error {
+func (a *awsKeyVaultStorage) createConfigFileIfMissing() error {
 	if _, err := os.Stat(a.configFileLocation); !os.IsNotExist(err) {
 		logger.Infof("Config file already exists at: %s", a.configFileLocation)
 		return nil
@@ -232,7 +234,7 @@ func (a *AWSKeyVaultStorage) createConfigFileIfMissing() error {
 }
 
 // Retrieves the details of the KMS key.
-func (a *AWSKeyVaultStorage) getKeyDetails() (*kms.DescribeKeyOutput, error) {
+func (a *awsKeyVaultStorage) getKeyDetails() (*kms.DescribeKeyOutput, error) {
 	keyDetails, err := a.kmsClient.DescribeKey(context.Background(), &kms.DescribeKeyInput{
 		KeyId: &a.keyARN,
 	})
@@ -246,7 +248,7 @@ func (a *AWSKeyVaultStorage) getKeyDetails() (*kms.DescribeKeyOutput, error) {
 }
 
 // createHash creates an MD5 hash of the provided config data.
-func (a *AWSKeyVaultStorage) createHash(config []byte) string {
+func (a *awsKeyVaultStorage) createHash(config []byte) string {
 	hash := md5.Sum(config)
 	return hex.EncodeToString(hash[:])
 }
@@ -269,7 +271,7 @@ func getConfig(awsSessionConfig *AWSConfig) (*aws.Config, error) {
 }
 
 // Encrypts the configuration data and writes it to the config file.
-func (a *AWSKeyVaultStorage) encryptConfig(config []byte) error {
+func (a *awsKeyVaultStorage) encryptConfig(config []byte) error {
 	keydata, err := a.getKeyDetails()
 	if err != nil {
 		return err
@@ -297,7 +299,7 @@ func (a *AWSKeyVaultStorage) encryptConfig(config []byte) error {
 }
 
 // Changes the KMS key used for encryption and decryption.
-func (a *AWSKeyVaultStorage) ChangeKey(newKeyARN string) (bool, error) {
+func (a *awsKeyVaultStorage) ChangeKey(newKeyARN string) (bool, error) {
 	oldKeyARN := a.keyARN
 	oldKMSClient := a.kmsClient
 	config, err := getConfig(a.awsConfig)
@@ -308,7 +310,7 @@ func (a *AWSKeyVaultStorage) ChangeKey(newKeyARN string) (bool, error) {
 	client := kms.NewFromConfig(*config)
 	a.kmsClient = client
 	a.keyARN = newKeyARN
-	if err := a.saveConfig(a.config); err != nil {
+	if err := a.saveConfig(a.config, true); err != nil {
 		a.kmsClient = oldKMSClient
 		a.keyARN = oldKeyARN
 		logger.Errorf("Failed to change the key to '%s' for config '%s': %v", newKeyARN, a.configFileLocation, err)
@@ -316,4 +318,48 @@ func (a *AWSKeyVaultStorage) ChangeKey(newKeyARN string) (bool, error) {
 	}
 
 	return true, nil
+}
+
+func (a *awsKeyVaultStorage) DecryptConfig(autosave bool) (string, error) {
+	var ciphertext []byte
+	var plaintext []byte
+
+	ciphertext, err := os.ReadFile(a.configFileLocation)
+	if err != nil {
+		return "", fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	if len(ciphertext) == 0 {
+		logger.Warnf("empty config file %s", a.configFileLocation)
+		return "", nil
+	}
+
+	keydata, err := a.getKeyDetails()
+	if err != nil {
+
+	}
+
+	if keydata.KeyMetadata.KeySpec == types.KeySpecSymmetricDefault {
+		plaintext, err = decryptSymmetric(a.kmsClient, a.keyARN, ciphertext)
+		if err != nil {
+			return "", fmt.Errorf("failed to decrypt config file %s", a.configFileLocation)
+		}
+	} else {
+		plaintext, err = decryptAsymmetric(a.kmsClient, a.keyARN, ciphertext)
+		if err != nil {
+			return "", fmt.Errorf("failed to decrypt config file %s", a.configFileLocation)
+		}
+	}
+
+	if len(plaintext) == 0 {
+		logger.Error("empty config file")
+		return "", fmt.Errorf("empty config file")
+	} else if autosave {
+		if err := os.WriteFile(a.configFileLocation, plaintext, 0644); err != nil {
+			logger.Error(fmt.Sprintf("failed to write decrypted config file %s: %v", a.configFileLocation, err))
+			return "", fmt.Errorf("failed to write decrypted config file %s", a.configFileLocation)
+		}
+	}
+
+	return string(plaintext), nil
 }
