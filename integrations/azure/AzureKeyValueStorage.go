@@ -34,7 +34,7 @@ type AzureConfig struct {
 	KeyURL       string
 }
 
-type AzureKeyValueStorage struct {
+type azureKeyValueStorage struct {
 	configFileLocation  string
 	config              map[core.ConfigKey]interface{}
 	lastSavedConfigHash string
@@ -45,7 +45,7 @@ type AzureKeyValueStorage struct {
 }
 
 // Creates a new instance of AzureKeyValueStorage.
-func NewAzureKeyValueStorage(configFileLocation string, azSessionConfig *AzureConfig) *AzureKeyValueStorage {
+func NewAzureKeyValueStorage(configFileLocation string, azSessionConfig *AzureConfig) *azureKeyValueStorage {
 	if configFileLocation == "" {
 		if envConfigFileLocation, ok := os.LookupEnv("KSM_CONFIG_FILE"); ok {
 			configFileLocation = envConfigFileLocation
@@ -73,7 +73,7 @@ func NewAzureKeyValueStorage(configFileLocation string, azSessionConfig *AzureCo
 		return nil
 	}
 
-	azureDetails := &AzureKeyValueStorage{
+	azureDetails := &azureKeyValueStorage{
 		configFileLocation:  configFileLocation,
 		config:              make(map[core.ConfigKey]interface{}),
 		lastSavedConfigHash: "",
@@ -92,7 +92,7 @@ func NewAzureKeyValueStorage(configFileLocation string, azSessionConfig *AzureCo
 }
 
 // Loads the decrypted configuration from the config file if encrypted config is present, else encrypts the config.
-func (s *AzureKeyValueStorage) loadConfig() error {
+func (s *azureKeyValueStorage) loadConfig() error {
 	var config map[core.ConfigKey]interface{}
 	var jsonError error
 	var decryptionError bool
@@ -160,7 +160,7 @@ func (s *AzureKeyValueStorage) loadConfig() error {
 }
 
 // Saves the encrypted updated configuration to the config file and updates the hash of the config.
-func (s *AzureKeyValueStorage) saveConfig(updatedConfig map[core.ConfigKey]interface{}, force bool) error {
+func (s *azureKeyValueStorage) saveConfig(updatedConfig map[core.ConfigKey]interface{}, force bool) error {
 	config := s.config
 	if config == nil {
 		config = make(map[core.ConfigKey]interface{})
@@ -206,7 +206,7 @@ func (s *AzureKeyValueStorage) saveConfig(updatedConfig map[core.ConfigKey]inter
 }
 
 // Creates the config file if does not exist and encrypts it.
-func (s *AzureKeyValueStorage) createConfigFileIfMissing() error {
+func (s *azureKeyValueStorage) createConfigFileIfMissing() error {
 	if _, err := os.Stat(s.configFileLocation); !os.IsNotExist(err) {
 		logger.Infof("Config file already exists at: %s", s.configFileLocation)
 		return nil
@@ -228,7 +228,7 @@ func (s *AzureKeyValueStorage) createConfigFileIfMissing() error {
 }
 
 // creates an MD5 hash of the provided config data.
-func (s *AzureKeyValueStorage) createHash(data []byte) string {
+func (s *azureKeyValueStorage) createHash(data []byte) string {
 	hash := md5.Sum(data)
 	return hex.EncodeToString(hash[:])
 }
@@ -250,7 +250,7 @@ func fetchCredentials(azSessionConfig *AzureConfig) (azcore.TokenCredential, err
 	return secretCredentials, nil
 }
 
-func (s *AzureKeyValueStorage) encryptConfig(config []byte) error {
+func (s *azureKeyValueStorage) encryptConfig(config []byte) error {
 	var blob []byte
 	var err error
 
@@ -292,7 +292,7 @@ func fetchKeyDetails(keyURL string) (string, string, string, error) {
 }
 
 // Changes the key used to encrypt/decrypt the configuration.
-func (s *AzureKeyValueStorage) ChangeKey(newKeyURL string) (bool, error) {
+func (s *azureKeyValueStorage) ChangeKey(newKeyURL string) (bool, error) {
 	oldState := struct {
 		vaultURL, keyName, keyVersion string
 		cryptoClient                  *azkeys.Client
@@ -334,7 +334,7 @@ func (s *AzureKeyValueStorage) ChangeKey(newKeyURL string) (bool, error) {
 	return true, nil
 }
 
-func (s *AzureKeyValueStorage) DecryptConfig(autosave bool) (string, error) {
+func (s *azureKeyValueStorage) DecryptConfig(autosave bool) (string, error) {
 	var ciphertext []byte
 	var plaintext []byte
 	ciphertext, err := os.ReadFile(s.configFileLocation)
