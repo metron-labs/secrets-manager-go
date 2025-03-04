@@ -56,11 +56,13 @@ func NewAzureKeyValueStorage(configFileLocation string, azSessionConfig *AzureCo
 
 	credential, err := fetchCredentials(azSessionConfig)
 	if err != nil {
+		logger.Errorf("Failed to fetch credentials: %v", err)
 		return nil
 	}
 
 	baseURL, keyName, keyVersion, err := fetchKeyDetails(azSessionConfig.KeyURL)
 	if err != nil {
+		logger.Errorf("Failed to fetch key details from URL: %v", err)
 		return nil
 	}
 
