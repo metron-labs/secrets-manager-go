@@ -15,16 +15,17 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"oraclekv/oracle/logger"
+
 	"os"
 	"path/filepath"
 
 	"github.com/keeper-security/secrets-manager-go/core"
+	"github.com/keeper-security/secrets-manager-go/integrations/oracle/logger"
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/keymanagement"
 )
 
-type KeyConfig struct {
+type OracleConfig struct {
 	KeyId                   string
 	KeyVersionID            string
 	VaultManagementEndpoint string
@@ -33,17 +34,17 @@ type KeyConfig struct {
 	ProfileConfigPath       string
 }
 
-type OracleKeyVaultStorage struct {
+type oracleKeyVaultStorage struct {
 	configFileLocation  string
 	config              map[core.ConfigKey]interface{}
 	lastSavedConfigHash string
 	keyResourceName     string
 	oracleKMSClient     keymanagement.KmsCryptoClient
-	keyConfig           *KeyConfig
+	keyConfig           *OracleConfig
 }
 
 // Creates a new OracleKeyVaultStorage instance.
-func NewOracleKeyVaultStorage(configFileLocation string, keyConfig *KeyConfig) *OracleKeyVaultStorage {
+func NewOracleKeyVaultStorage(configFileLocation string, oracleConfig *OracleConfig) *oracleKeyVaultStorage {
 	var client keymanagement.KmsCryptoClient
 	var err error
 	if configFileLocation == "" {
@@ -54,21 +55,21 @@ func NewOracleKeyVaultStorage(configFileLocation string, keyConfig *KeyConfig) *
 		}
 	}
 
-	if keyConfig.Profile == "" && keyConfig.ProfileConfigPath == "" {
-		client, err = keymanagement.NewKmsCryptoClientWithConfigurationProvider(common.DefaultConfigProvider(), keyConfig.VaultCryptoEndpoint)
+	if oracleConfig.Profile == "" && oracleConfig.ProfileConfigPath == "" {
+		client, err = keymanagement.NewKmsCryptoClientWithConfigurationProvider(common.DefaultConfigProvider(), oracleConfig.VaultCryptoEndpoint)
 		if err != nil {
 			logger.Errorf("Failed to create Oracle KMS crypto client: %v", err)
 			return nil
 		}
 	} else {
-		client, err = keymanagement.NewKmsCryptoClientWithConfigurationProvider(common.CustomProfileConfigProvider(keyConfig.ProfileConfigPath, keyConfig.Profile), keyConfig.VaultCryptoEndpoint)
+		client, err = keymanagement.NewKmsCryptoClientWithConfigurationProvider(common.CustomProfileConfigProvider(oracleConfig.ProfileConfigPath, oracleConfig.Profile), oracleConfig.VaultCryptoEndpoint)
 		if err != nil {
 			logger.Errorf("Failed to create Oracle KMS crypto client: %v", err)
 			return nil
 		}
 	}
 
-	keyDetails, err := getKeyDetails(keyConfig)
+	keyDetails, err := getKeyDetails(oracleConfig)
 	if err != nil {
 		logger.Errorf("Failed to get key details: %v", err)
 		return nil
@@ -79,13 +80,13 @@ func NewOracleKeyVaultStorage(configFileLocation string, keyConfig *KeyConfig) *
 		return nil
 	}
 
-	oracleStorage := &OracleKeyVaultStorage{
+	oracleStorage := &oracleKeyVaultStorage{
 		config:              make(map[core.ConfigKey]interface{}),
 		lastSavedConfigHash: "",
 		configFileLocation:  configFileLocation,
-		keyResourceName:     keyConfig.KeyId,
+		keyResourceName:     oracleConfig.KeyId,
 		oracleKMSClient:     client,
-		keyConfig:           keyConfig,
+		keyConfig:           oracleConfig,
 	}
 
 	oracleStorage.loadConfig()
@@ -93,7 +94,7 @@ func NewOracleKeyVaultStorage(configFileLocation string, keyConfig *KeyConfig) *
 }
 
 // Loads the decrypted configuration from the config file if encrypted config is present, else encrypts the config.
-func (o *OracleKeyVaultStorage) loadConfig() error {
+func (o *oracleKeyVaultStorage) loadConfig() error {
 	var config map[core.ConfigKey]interface{}
 	var jsonError error
 	var decryptError bool
@@ -173,7 +174,7 @@ func (o *OracleKeyVaultStorage) loadConfig() error {
 }
 
 // Saves the encrypted updated configuration to the config file and updates the hash of the config.
-func (o *OracleKeyVaultStorage) saveConfig(updatedConfig map[core.ConfigKey]interface{}, force bool) error {
+func (o *oracleKeyVaultStorage) saveConfig(updatedConfig map[core.ConfigKey]interface{}, force bool) error {
 	configJson, err := json.Marshal(o.config)
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
@@ -214,7 +215,7 @@ func (o *OracleKeyVaultStorage) saveConfig(updatedConfig map[core.ConfigKey]inte
 }
 
 // Creates the config file and encrypt if it is not already exist.
-func (o *OracleKeyVaultStorage) createConfigFileIfMissing() error {
+func (o *oracleKeyVaultStorage) createConfigFileIfMissing() error {
 	if _, err := os.Stat(o.configFileLocation); !os.IsNotExist(err) {
 		logger.Infof("Config file already exists at: %s", o.configFileLocation)
 		return nil
@@ -236,13 +237,13 @@ func (o *OracleKeyVaultStorage) createConfigFileIfMissing() error {
 }
 
 // Creates a hash of the given configuration data.
-func (g *OracleKeyVaultStorage) createHash(config []byte) string {
+func (g *oracleKeyVaultStorage) createHash(config []byte) string {
 	hash := md5.Sum(config)
 	return hex.EncodeToString(hash[:])
 }
 
 // Encrypts the configuration data and writes it to the config file.
-func (o *OracleKeyVaultStorage) encryptConfig(config []byte) error {
+func (o *oracleKeyVaultStorage) encryptConfig(config []byte) error {
 	keydata, err := getKeyDetails(o.keyConfig)
 	if err != nil {
 		return err
@@ -272,7 +273,7 @@ func (o *OracleKeyVaultStorage) encryptConfig(config []byte) error {
 }
 
 // Update and save the config according to new Key.
-func (o *OracleKeyVaultStorage) ChangeKey(updatedKeyConfig *KeyConfig) (bool, error) {
+func (o *oracleKeyVaultStorage) ChangeKey(updatedKeyConfig *OracleConfig) (bool, error) {
 	oldKeyConfig := o.keyConfig
 	oldKMSClient := o.oracleKMSClient
 	newKMSClient, err := keymanagement.NewKmsCryptoClientWithConfigurationProvider(common.DefaultConfigProvider(), updatedKeyConfig.VaultCryptoEndpoint)
@@ -283,7 +284,7 @@ func (o *OracleKeyVaultStorage) ChangeKey(updatedKeyConfig *KeyConfig) (bool, er
 
 	o.keyConfig = updatedKeyConfig
 	o.oracleKMSClient = newKMSClient
-	if err := o.saveConfig(o.config, true); err != nil {
+	if err := o.saveConfig(make(map[core.ConfigKey]interface{}), true); err != nil {
 		o.keyConfig = oldKeyConfig
 		o.oracleKMSClient = oldKMSClient
 		logger.Errorf("Failed to change the key to '%v' for config '%s': %v", updatedKeyConfig, o.configFileLocation, err)

@@ -10,8 +10,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"oraclekv/oracle/logger"
 
+	"github.com/keeper-security/secrets-manager-go/integrations/oracle/logger"
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/keymanagement"
 )
@@ -20,14 +20,14 @@ const (
 	BLOB_HEADER = "\xff\xff"
 )
 
-func getKeyDetails(keyConfig *KeyConfig) (*keymanagement.GetKeyResponse, error) {
-	client, err := keymanagement.NewKmsManagementClientWithConfigurationProvider(common.DefaultConfigProvider(), keyConfig.VaultManagementEndpoint)
+func getKeyDetails(oracleConfig *OracleConfig) (*keymanagement.GetKeyResponse, error) {
+	client, err := keymanagement.NewKmsManagementClientWithConfigurationProvider(common.DefaultConfigProvider(), oracleConfig.VaultManagementEndpoint)
 	if err != nil {
 		return nil, err
 	}
 
 	req := keymanagement.GetKeyRequest{
-		KeyId: common.String(keyConfig.KeyId),
+		KeyId: common.String(oracleConfig.KeyId),
 	}
 
 	resp, err := client.GetKey(context.Background(), req)
@@ -39,12 +39,12 @@ func getKeyDetails(keyConfig *KeyConfig) (*keymanagement.GetKeyResponse, error) 
 	return &resp, nil
 }
 
-func encryptSymmetric(client keymanagement.KmsCryptoClient, keyConfig KeyConfig, message []byte) ([]byte, error) {
+func encryptSymmetric(client keymanagement.KmsCryptoClient, oracleConfig OracleConfig, message []byte) ([]byte, error) {
 	req := keymanagement.EncryptRequest{
 		EncryptDataDetails: keymanagement.EncryptDataDetails{
 			EncryptionAlgorithm: keymanagement.EncryptDataDetailsEncryptionAlgorithmAes256Gcm,
-			KeyId:               common.String(keyConfig.KeyId),
-			KeyVersionId:        common.String(keyConfig.KeyVersionID),
+			KeyId:               common.String(oracleConfig.KeyId),
+			KeyVersionId:        common.String(oracleConfig.KeyVersionID),
 			Plaintext:           common.String(base64.StdEncoding.EncodeToString(message)),
 		},
 	}
@@ -58,12 +58,12 @@ func encryptSymmetric(client keymanagement.KmsCryptoClient, keyConfig KeyConfig,
 	return []byte(*resp.EncryptedData.Ciphertext), nil
 }
 
-func decryptSymmetric(client keymanagement.KmsCryptoClient, keyConfig KeyConfig, cipherText []byte) ([]byte, error) {
+func decryptSymmetric(client keymanagement.KmsCryptoClient, oracleConfig OracleConfig, cipherText []byte) ([]byte, error) {
 	req := keymanagement.DecryptRequest{
 		DecryptDataDetails: keymanagement.DecryptDataDetails{
 			EncryptionAlgorithm: keymanagement.DecryptDataDetailsEncryptionAlgorithmAes256Gcm,
-			KeyId:               common.String(keyConfig.KeyId),
-			KeyVersionId:        common.String(keyConfig.KeyVersionID),
+			KeyId:               common.String(oracleConfig.KeyId),
+			KeyVersionId:        common.String(oracleConfig.KeyVersionID),
 			Ciphertext:          common.String(string(cipherText)),
 		},
 	}
@@ -83,7 +83,7 @@ func decryptSymmetric(client keymanagement.KmsCryptoClient, keyConfig KeyConfig,
 	return decodedData, nil
 }
 
-func encryptAsymmetric(client keymanagement.KmsCryptoClient, keyConfig KeyConfig, message []byte) ([]byte, error) {
+func encryptAsymmetric(client keymanagement.KmsCryptoClient, oracleConfig OracleConfig, message []byte) ([]byte, error) {
 	key := make([]byte, 32)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
 		return nil, fmt.Errorf("failed to generate random key: %w", err)
@@ -110,8 +110,8 @@ func encryptAsymmetric(client keymanagement.KmsCryptoClient, keyConfig KeyConfig
 
 	req := keymanagement.EncryptRequest{EncryptDataDetails: keymanagement.EncryptDataDetails{
 		EncryptionAlgorithm: keymanagement.EncryptDataDetailsEncryptionAlgorithmRsaOaepSha256,
-		KeyId:               common.String(keyConfig.KeyId),
-		KeyVersionId:        common.String(keyConfig.KeyVersionID),
+		KeyId:               common.String(oracleConfig.KeyId),
+		KeyVersionId:        common.String(oracleConfig.KeyVersionID),
 		Plaintext:           common.String(base64.StdEncoding.EncodeToString(key)),
 	}}
 
@@ -137,7 +137,7 @@ func encryptAsymmetric(client keymanagement.KmsCryptoClient, keyConfig KeyConfig
 	return blob, nil
 }
 
-func decryptAsymmetric(client keymanagement.KmsCryptoClient, keyConfig KeyConfig, cipherText []byte) ([]byte, error) {
+func decryptAsymmetric(client keymanagement.KmsCryptoClient, oracleConfig OracleConfig, cipherText []byte) ([]byte, error) {
 	if !bytes.HasPrefix(cipherText, []byte(BLOB_HEADER)) {
 		return nil, fmt.Errorf("invalid BLOB_HEADER")
 	}
@@ -160,8 +160,8 @@ func decryptAsymmetric(client keymanagement.KmsCryptoClient, keyConfig KeyConfig
 	req := keymanagement.DecryptRequest{
 		DecryptDataDetails: keymanagement.DecryptDataDetails{
 			EncryptionAlgorithm: keymanagement.DecryptDataDetailsEncryptionAlgorithmRsaOaepSha256,
-			KeyId:               common.String(keyConfig.KeyId),
-			KeyVersionId:        common.String(keyConfig.KeyVersionID),
+			KeyId:               common.String(oracleConfig.KeyId),
+			KeyVersionId:        common.String(oracleConfig.KeyVersionID),
 			Ciphertext:          common.String(string(components[0])),
 		},
 	}
