@@ -314,7 +314,7 @@ func (a *awsKeyVaultStorage) ChangeKey(updatedKeyARN string, updatedConfig *AWSC
 	client := kms.NewFromConfig(*config)
 	a.kmsClient = client
 	a.keyARN = updatedKeyARN
-	if err := a.saveConfig(a.config, true); err != nil {
+	if err := a.saveConfig(make(map[core.ConfigKey]interface{}), true); err != nil {
 		a.kmsClient = oldKMSClient
 		a.keyARN = oldKeyARN
 		logger.Errorf("Failed to change the key to '%s' for config '%s': %v", updatedKeyARN, a.configFileLocation, err)

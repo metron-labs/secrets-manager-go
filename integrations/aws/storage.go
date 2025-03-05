@@ -1,8 +1,6 @@
 package awskv
 
 import (
-	"fmt"
-
 	"github.com/keeper-security/secrets-manager-go/core"
 	"github.com/keeper-security/secrets-manager-go/integrations/aws/logger"
 )
@@ -30,7 +28,7 @@ func (a *awsKeyVaultStorage) SaveStorage(updatedConfig map[string]interface{}) {
 	}
 
 	if err := a.saveConfig(convertedConfig, false); err != nil {
-		logger.Errorf("%s", fmt.Sprintf("Failed to save config: %v", err))
+		logger.Errorf("Failed to save config: %v", err)
 	}
 }
 
@@ -39,21 +37,21 @@ func (a *awsKeyVaultStorage) Get(key core.ConfigKey) string {
 		if strVal, ok := val.(string); ok {
 			return strVal
 		}
-		logger.Errorf("%s", fmt.Sprintf("Invalid type for key '%s': %v", key, val))
-		return ""
 	}
+
 	return ""
+
 }
 
 func (a *awsKeyVaultStorage) Set(key core.ConfigKey, value interface{}) map[string]interface{} {
-	switch v := value.(type) {
-	case string:
-		a.config[key] = v
-		return a.ReadStorage()
-	default:
-		logger.Errorf("%s", fmt.Sprintf("Unknown value for ConfigKey: %s, Value: %v", string(key), v))
+	a.config[key] = value
+	convertedConfig := make(map[string]interface{})
+	for k, v := range a.config {
+		convertedConfig[string(k)] = v
 	}
-	return nil
+
+	a.SaveStorage(convertedConfig)
+	return a.ReadStorage()
 }
 
 func (a *awsKeyVaultStorage) Delete(key core.ConfigKey) map[string]interface{} {
@@ -64,6 +62,7 @@ func (a *awsKeyVaultStorage) Delete(key core.ConfigKey) map[string]interface{} {
 	} else {
 		logger.Warnf("No key '%s' was found in config", string(key))
 	}
+
 	return a.ReadStorage()
 }
 
