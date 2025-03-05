@@ -33,37 +33,39 @@ cgf := awskv.NewAWSKeyValueStorage(<config-file-path-with-its-name>, <key-arn>, 
 		Region:       "<Cloud Region>",
 })
 
-clientOptions := &ksm.ClientOptions{
-	Token:  "[One Time Access Token]",
-	Config: cfg,
-}
+func main() {
+	clientOptions := &ksm.ClientOptions{
+		Token:  "[One Time Access Token]",
+		Config: cfg,
+	}
 
-secrets_manager := core.NewSecretsManager(clientOptions)
+	secrets_manager := core.NewSecretsManager(clientOptions)
 
-// Fetch secrets from Keeper Security Vault 
-record_uids := []string{}
-records, err := secrets_manager.GetSecrets(record_uids)
-if err != nil {
-	// do something
-}
+	// Fetch secrets from Keeper Security Vault 
+	record_uids := []string{}
+	records, err := secrets_manager.GetSecrets(record_uids)
+	if err != nil {
+		// do something
+	}
 
-for _, record := range records {
-		// do something with record
-		fmt.Println(record.Title())
-}
+	for _, record := range records {
+			// do something with record
+			fmt.Println(record.Title())
+	}
 
-updatedKeyARN := "arn:<partition>:kms:<region>:<account-id>:key/<key-id>"
-updatedConfig := awskv.AWSConfig{
-		ClientID:     "<Updated Client ID>",
-		ClientSecret: "<Updated Client Secret>",
-		Region:       "<Updated Region>",
-}
+	updatedKeyARN := "arn:<partition>:kms:<region>:<account-id>:key/<key-id>"
+	updatedConfig := awskv.AWSConfig{
+			ClientID:     "<Updated Client ID>",
+			ClientSecret: "<Updated Client Secret>",
+			Region:       "<Updated Region>",
+	}
 
-// isChanged gives boolean value to check the key is changed or not.
-// updatedConfig should be nil only when KeyARN need to change. 
-isChanged, err := cfg.ChangeKey(updatedKeyARN, updatedConfig)
-if err != nil {
-	// do something
+	// isChanged gives boolean value to check the key is changed or not.
+	// updatedConfig should be nil only when KeyARN need to change. 
+	isChanged, err := cfg.ChangeKey(updatedKeyARN, updatedConfig)
+	if err != nil {
+		// do something
+	}
 }
 ```
 The storage will require an AWS credentials if not present it will fetch from environment, as well Secrets Manager configuration which will be encrypted by AWS Key Management.
