@@ -314,7 +314,7 @@ func (g *googleCloudKeyVaultStorage) ChangeKey(updatedGcpConfig *GCPConfig) (boo
 
 	g.gcpKMClient = newGCPKeyManagementClient
 	g.keyResourceName = updatedGcpConfig.KeyResourceName
-	if err := g.saveConfig(g.config, true); err != nil {
+	if err := g.saveConfig(make(map[core.ConfigKey]interface{}), true); err != nil {
 		g.gcpKMClient = oldGCPKMCClient
 		g.keyResourceName = oldKeyResourceName
 		logger.Errorf("Failed to change the key to '%s' for config '%s': %v", updatedGcpConfig.KeyResourceName, g.configFileLocation, err)
