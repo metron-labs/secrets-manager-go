@@ -11,13 +11,14 @@ import (
 	"encoding/binary"
 	"encoding/pem"
 	"fmt"
-	"gcpkv/gcp/logger"
+
 	"hash/crc32"
 	"io"
 	"strings"
 
 	kms "cloud.google.com/go/kms/apiv1"
 	"cloud.google.com/go/kms/apiv1/kmspb"
+	"github.com/keeper-security/secrets-manager-go/integrations/gcp/logger"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
@@ -26,7 +27,7 @@ const (
 )
 
 // Encrypts the message using a symmetric key stored in Google Cloud KMS.
-func encryptionSymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClient, keyResourceName string, message []byte) ([]byte, error) {
+func encryptionSymmetric(ctx context.Context, gcpKMClient *kms.KeyManagementClient, keyResourceName string, message []byte) ([]byte, error) {
 	if keyResourceName == "" {
 		logger.Errorf("keyResourceName is empty")
 		return nil, fmt.Errorf("keyResourceName is empty")
@@ -37,7 +38,7 @@ func encryptionSymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementCli
 		return crc32.Checksum(data, t)
 	}
 
-	text, err := gcpKMCClient.Encrypt(ctx, &kmspb.EncryptRequest{
+	text, err := gcpKMClient.Encrypt(ctx, &kmspb.EncryptRequest{
 		Name:            keyResourceName,
 		Plaintext:       message,
 		PlaintextCrc32C: wrapperspb.Int64(int64(crc32c(message))),
@@ -51,7 +52,7 @@ func encryptionSymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementCli
 }
 
 // Decrypts the ciphertext using a symmetric key stored in Google Cloud KMS.
-func decryptionSymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClient, keyResourceName string, cipherText []byte) ([]byte, error) {
+func decryptionSymmetric(ctx context.Context, gcpKMClient *kms.KeyManagementClient, keyResourceName string, cipherText []byte) ([]byte, error) {
 	if keyResourceName == "" {
 		return nil, fmt.Errorf("keyResourceName is empty")
 	}
@@ -66,7 +67,7 @@ func decryptionSymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementCli
 		return crc32.Checksum(data, t)
 	}
 
-	plainText, err := gcpKMCClient.Decrypt(ctx, &kmspb.DecryptRequest{
+	plainText, err := gcpKMClient.Decrypt(ctx, &kmspb.DecryptRequest{
 		Name:             keyResourceName,
 		Ciphertext:       cipherText,
 		CiphertextCrc32C: wrapperspb.Int64(int64(crc32c(cipherText))),
@@ -80,8 +81,8 @@ func decryptionSymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementCli
 }
 
 // Encrypts the key using an asymmetric key stored in Google Cloud KMS.
-func encryptionAsymmetricKey(ctx context.Context, gcpKMCClient *kms.KeyManagementClient, keyResourceName string, key []byte) ([]byte, error) {
-	response, err := gcpKMCClient.GetPublicKey(ctx, &kmspb.GetPublicKeyRequest{
+func encryptionAsymmetricKey(ctx context.Context, gcpKMClient *kms.KeyManagementClient, keyResourceName string, key []byte) ([]byte, error) {
+	response, err := gcpKMClient.GetPublicKey(ctx, &kmspb.GetPublicKeyRequest{
 		Name: keyResourceName,
 	})
 	if err != nil {
@@ -104,7 +105,7 @@ func encryptionAsymmetricKey(ctx context.Context, gcpKMCClient *kms.KeyManagemen
 		return nil, fmt.Errorf("public key is not rsa")
 	}
 
-	keyVersion, err := gcpKMCClient.GetCryptoKeyVersion(ctx, &kmspb.GetCryptoKeyVersionRequest{
+	keyVersion, err := gcpKMClient.GetCryptoKeyVersion(ctx, &kmspb.GetCryptoKeyVersionRequest{
 		Name: keyResourceName,
 	})
 	if err != nil {
@@ -126,7 +127,7 @@ func encryptionAsymmetricKey(ctx context.Context, gcpKMCClient *kms.KeyManagemen
 }
 
 // Decrypts the ciphertext key using an asymmetric key stored in Google Cloud KMS.
-func decryptAsymmetricKey(ctx context.Context, gcpKMCClient *kms.KeyManagementClient, keyResourceName string, key []byte) ([]byte, error) {
+func decryptAsymmetricKey(ctx context.Context, gcpKMClient *kms.KeyManagementClient, keyResourceName string, key []byte) ([]byte, error) {
 	crc32c := func(data []byte) uint32 {
 		t := crc32.MakeTable(crc32.Castagnoli)
 		return crc32.Checksum(data, t)
@@ -139,7 +140,7 @@ func decryptAsymmetricKey(ctx context.Context, gcpKMCClient *kms.KeyManagementCl
 		CiphertextCrc32C: wrapperspb.Int64(int64(ciphertextCRC32C)),
 	}
 
-	result, err := gcpKMCClient.AsymmetricDecrypt(ctx, req)
+	result, err := gcpKMClient.AsymmetricDecrypt(ctx, req)
 	if err != nil {
 		logger.Errorf("failed to decrypt ciphertext: %v", err)
 		return nil, fmt.Errorf("failed to decrypt ciphertext: %w", err)
@@ -157,7 +158,7 @@ func decryptAsymmetricKey(ctx context.Context, gcpKMCClient *kms.KeyManagementCl
 }
 
 // Encrypts the message using an asymmetric key stored in Google Cloud KMS.
-func encryptAsymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClient, keyResourceName string, message []byte) ([]byte, error) {
+func encryptAsymmetric(ctx context.Context, gcpKMClient *kms.KeyManagementClient, keyResourceName string, message []byte) ([]byte, error) {
 	var blob []byte
 	key := make([]byte, 32)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
@@ -183,7 +184,7 @@ func encryptAsymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClien
 	tag := ciphertext[len(ciphertext)-aesGCM.Overhead():]
 	ciphertext = ciphertext[:len(ciphertext)-aesGCM.Overhead()]
 
-	encryptedKey, err := encryptionAsymmetricKey(ctx, gcpKMCClient, keyResourceName, key)
+	encryptedKey, err := encryptionAsymmetricKey(ctx, gcpKMClient, keyResourceName, key)
 	if err != nil {
 		logger.Errorf("Failed to encrypt asymmetric key: %v", err)
 		return nil, err
@@ -207,7 +208,7 @@ func encryptAsymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClien
 }
 
 // Decrypts the given ciphertext using an asymmetric key stored in Google Cloud KMS.
-func decryptAsymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClient, keyResourceName string, cipherText []byte) ([]byte, error) {
+func decryptAsymmetric(ctx context.Context, gcpKMClient *kms.KeyManagementClient, keyResourceName string, cipherText []byte) ([]byte, error) {
 	if !bytes.HasPrefix(cipherText, []byte(BLOB_HEADER)) {
 		return nil, fmt.Errorf("invalid BLOB_HEADER")
 	}
@@ -222,7 +223,7 @@ func decryptAsymmetric(ctx context.Context, gcpKMCClient *kms.KeyManagementClien
 		cipherText = cipherText[compLen:]
 	}
 
-	decryptedKey, err := decryptAsymmetricKey(ctx, gcpKMCClient, keyResourceName, components[0])
+	decryptedKey, err := decryptAsymmetricKey(ctx, gcpKMClient, keyResourceName, components[0])
 	if err != nil {
 		return nil, err
 	}

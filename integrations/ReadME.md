@@ -20,7 +20,7 @@ Setup
 
 The Secrets Manager GCP package are located in the Keeper Secrets Manager storage package which can be installed using 
 
-> `go get github.com/keeper-security/secrets-manager-go/core`
+> `go get github.com/keeper-security/secrets-manager-go/integrations/gcp`
 Configure GCP Connection
 
 configuration variables can be provided as 
