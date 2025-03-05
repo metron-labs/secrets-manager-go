@@ -339,6 +339,15 @@ func (g *googleCloudKeyVaultStorage) DecryptConfig(autosave bool) (string, error
 		return "", nil
 	}
 
+	// Create a new GCP Key Management client as previous client close while the NewGCPKeyVaultStorage finishes its execution
+	gcpKeyManagementClient, err := kms.NewKeyManagementClient(ctx, option.WithCredentialsFile(g.gcpConfig.CredentialsFileLocation))
+	if err != nil {
+		logger.Errorf("Failed to create GCP Key Management client: %v", err)
+		return "", fmt.Errorf("failed to create GCP Key Management client: %w", err)
+	}
+	defer gcpKeyManagementClient.Close()
+
+	g.gcpKMClient = gcpKeyManagementClient
 	keydata, err := getKeyDetails(ctx, g.gcpKMClient, g.gcpConfig.KeyResourceName)
 	if err != nil {
 		return "", fmt.Errorf("failed to get key details: %w", err)
