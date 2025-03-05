@@ -52,14 +52,15 @@ for _, record := range records {
 		fmt.Println(record.Title())
 }
 
-newKeyARN := awskv.AWSConfig{
+updatedKeyARN := "arn:<partition>:kms:<region>:<account-id>:key/<key-id>"
+updatedConfig := awskv.AWSConfig{
 		ClientID:     "<Updated Client ID>",
 		ClientSecret: "<Updated Client Secret>",
 		Region:       "<Updated Region>",
 }
 
 // isChanged gives boolean value to check the key is changed or not.
-isChanged, err := cfg.ChangeKey(newKeyARN)
+isChanged, err := cfg.ChangeKey(updatedKeyARN, updatedConfig)
 if err != nil {
 	// do something
 }

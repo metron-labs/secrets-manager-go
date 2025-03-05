@@ -299,21 +299,25 @@ func (a *awsKeyVaultStorage) encryptConfig(config []byte) error {
 }
 
 // Changes the KMS key used for encryption and decryption.
-func (a *awsKeyVaultStorage) ChangeKey(newKeyARN string) (bool, error) {
+func (a *awsKeyVaultStorage) ChangeKey(updatedKeyARN string, updatedConfig *AWSConfig) (bool, error) {
 	oldKeyARN := a.keyARN
 	oldKMSClient := a.kmsClient
-	config, err := getConfig(a.awsConfig)
+	if updatedConfig == nil {
+		updatedConfig = a.awsConfig
+	}
+
+	config, err := getConfig(updatedConfig)
 	if err != nil {
 		return false, fmt.Errorf("failed to get config: %w", err)
 	}
 
 	client := kms.NewFromConfig(*config)
 	a.kmsClient = client
-	a.keyARN = newKeyARN
+	a.keyARN = updatedKeyARN
 	if err := a.saveConfig(a.config, true); err != nil {
 		a.kmsClient = oldKMSClient
 		a.keyARN = oldKeyARN
-		logger.Errorf("Failed to change the key to '%s' for config '%s': %v", newKeyARN, a.configFileLocation, err)
+		logger.Errorf("Failed to change the key to '%s' for config '%s': %v", updatedKeyARN, a.configFileLocation, err)
 		return false, fmt.Errorf("failed to change the key for %s: %w", a.configFileLocation, err)
 	}
 
