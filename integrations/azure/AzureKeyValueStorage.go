@@ -322,7 +322,7 @@ func (s *azureKeyValueStorage) ChangeKey(newKeyURL string) (bool, error) {
 	}
 
 	s.cryptoClient = client
-	if err := s.saveConfig(s.config, true); err != nil {
+	if err := s.saveConfig(make(map[core.ConfigKey]interface{}), true); err != nil {
 		s.azureConfig.KeyURL = oldState.vaultURL
 		s.keyName = oldState.keyName
 		s.keyVersion = oldState.keyVersion
