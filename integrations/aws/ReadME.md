@@ -60,6 +60,7 @@ updatedConfig := awskv.AWSConfig{
 }
 
 // isChanged gives boolean value to check the key is changed or not.
+// updatedConfig should be nil only when KeyARN need to change. 
 isChanged, err := cfg.ChangeKey(updatedKeyARN, updatedConfig)
 if err != nil {
 	// do something
