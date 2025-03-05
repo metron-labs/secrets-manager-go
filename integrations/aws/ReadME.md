@@ -26,15 +26,18 @@ Configure AWS Connection
 configuration variables can be provided as 
 
 ```
-import awskv "github.com/keeper-security/secrets-manager-go/awskv"
-cgf := awskv.NewAWSKeyValueStorage(<config-file-path-with-its-name>, <key-arn>, &awskv.AWSConfig{
+import (
+	awskv "github.com/keeper-security/secrets-manager-go/awskv"
+)
+
+func main() {
+	cfg := awskv.NewAWSKeyValueStorage(<config-file-path-with-its-name>, <key-arn>, &awskv.AWSConfig{
 		ClientID:     "<Some Client ID>",
 		ClientSecret: "<Some Client Secret>",
 		Region:       "<Cloud Region>",
-})
+	})
 
-func main() {
-	clientOptions := &ksm.ClientOptions{
+	clientOptions := &core.ClientOptions{
 		Token:  "[One Time Access Token]",
 		Config: cfg,
 	}
