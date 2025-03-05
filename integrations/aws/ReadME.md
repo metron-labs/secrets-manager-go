@@ -27,6 +27,7 @@ configuration variables can be provided as
 
 ```
 import (
+	"github.com/keeper-security/secrets-manager-go/core"
 	awskv "github.com/keeper-security/secrets-manager-go/awskv"
 )
 
