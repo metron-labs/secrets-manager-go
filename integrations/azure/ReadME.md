@@ -38,9 +38,11 @@ import (
 )
 
 func main() {
+	decryptConfig := false
+	changeKey := false
 	fileName := "ksm-config.json" // Change the file name accordingly to your config file
 	keyURL := "<Key URL>"         // KeyURL of the key
-
+	oneTimeToken := "One Time Token"
 	//Initialize the Azure Key Vault Storage
 	cfg := azurekv.NewAzureKeyValueStorage(fileName, keyURL, &azurekv.AzureConfig{
 		TenantID:     "<Some Tenant ID>",
@@ -52,9 +54,12 @@ func main() {
 	fmt.Printf("key value: %s", cfg.Get(core.KEY_CLIENT_ID))
 
 	// create a new secrets manager client
-	secrets_manager := core.NewSecretsManager(&core.ClientOptions{
-		Config: cfg,
-	})
+	secrets_manager := core.NewSecretsManager(
+		&core.ClientOptions{
+			Config: cfg,
+			Token:  oneTimeToken,
+		},
+	)
 
 	// Fetch all the secrets from the vault
 	secrets, err := secrets_manager.GetSecrets([]string{})
@@ -68,29 +73,37 @@ func main() {
 		fmt.Printf("Records: %v\n", record)
 	}
 
-	updatedConfig := &azurekv.AzureConfig{
-		TenantID:     "<Updated Tenant ID>",
-		ClientID:     "<Updated Client ID>",
-		ClientSecret: "<Updated Client Secret>",
-	}
-	updatedKeyURL := "<Updated Key URL>"
+	if changeKey {
+		updatedConfig := &azurekv.AzureConfig{
+			TenantID:     "<Updated Tenant ID>",
+			ClientID:     "<Updated Client ID>",
+			ClientSecret: "<Updated Client Secret>",
+		}
+		updatedKeyURL := "<Updated Key URL>"
 
-	// Changes the key
-	// If you don't want to change Config, pass nil as a paramter
-	isChanged, err := cfg.ChangeKey(updatedKeyURL, updatedConfig)
-	if err != nil {
-		fmt.Printf("Error while changing key: %v", err)
-	} else {
-		fmt.Printf("Key changed: %v\n", isChanged)
+		// Changes the key
+		// If you don't want to change Config, pass nil as a paramter
+		isChanged, err := cfg.ChangeKey(updatedKeyURL, updatedConfig)
+		if err != nil {
+			fmt.Printf("Error while changing key: %v", err)
+		} else {
+			fmt.Printf("Key changed: %v\n", isChanged)
+		}
 	}
 
 	// Decrypt the config
-	plainText, err := cfg.DecryptConfig(true)
-	if err != nil {
-		// do something
-		fmt.Printf("Error while decrypting config: %v", err)
-	} else {
-		fmt.Printf("Decrypted data: %v\n", plainText)
+	if decryptConfig {
+		configs := make(map[core.ConfigKey]interface{})
+		plainText, err := cfg.DecryptConfig(decryptConfig)
+		if err != nil {
+			// do something
+			fmt.Printf("Error while decrypting config: %v", err)
+		} else {
+			if err := json.Unmarshal([]byte(plainText), &configs); err != nil {
+				fmt.Printf("Error while unmarshalling: %v", err)
+			}
+			fmt.Printf("Decrypted data: %v\n", configs["clientId"])
+		}
 	}
 }
 ```
