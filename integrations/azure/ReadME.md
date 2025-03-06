@@ -38,7 +38,8 @@ import (
 )
 
 func main() {
-	cfg := azurekv.NewAzureKeyValueStorage("ksm-config.json", &azurekv.AzureConfig{
+	fileName := "ksm-config.json" // Change the file name accordingly to your config file
+	cfg := azurekv.NewAzureKeyValueStorage(fileName, &azurekv.AzureConfig{
 		TenantID:     "<Some Tenant ID>",
 		ClientID:     "<Some Client ID>",
 		ClientSecret: "<Some Client Secret>",
@@ -67,11 +68,10 @@ func main() {
 		TenantID:     "<Updated Tenant ID>",     // Leave empty if you don't want to change the TenantID
 		ClientID:     "<Updated Client ID>",     //Leave empty if you don't want to change the ClientID
 		ClientSecret: "<Updated Client Secret>", // Leave empty if you don't want to change the ClientSecret
-		KeyURL:       "<Updated Key URL>",
+		KeyURL:       "<Updated Key URL>", // Mandatory field 
 	}
 
 	// Changes the key
-	// If you don't want to change the config, pass updatedConfig as nil
 	isChanged, err := cfg.ChangeKey(updatedConfig)
 	if err != nil {
 		fmt.Printf("Error while changing key: %v", err)
@@ -88,7 +88,6 @@ func main() {
 		fmt.Printf("Decrypted data: %v\n", plainText)
 	}
 }
-
 ```
 The storage will require an Azure Key URL, as well Secrets Manager configuration which will be encrypted by Azure Key Vault.
 
