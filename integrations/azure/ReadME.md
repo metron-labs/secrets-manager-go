@@ -28,56 +28,67 @@ Configure Azure Connection
 configuration variables can be provided as 
 
 ```
+package main
+
 import (
+	"fmt"
+
 	"github.com/keeper-security/secrets-manager-go/core"
-	azurekv "github.com/keeper-security/secrets-manager-go/azurekv"
+	azurekv "github.com/keeper-security/secrets-manager-go/integrations/azure"
 )
 
-key := azurekv.AzureConfig{
+func main() {
+	cfg := azurekv.NewAzureKeyValueStorage("ksm-config.json", &azurekv.AzureConfig{
 		TenantID:     "<Some Tenant ID>",
 		ClientID:     "<Some Client ID>",
 		ClientSecret: "<Some Client Secret>",
-		KeyURL:     "<Key URL>",
+		KeyURL:       "<Key URL>",
+	})
+
+	// Print the value of Client ID from the config
+	fmt.Printf("key value: %s", cfg.Get(core.KEY_CLIENT_ID))
+
+	secrets_manager := core.NewSecretsManager(&core.ClientOptions{
+		Config: cfg,
+	})
+
+	// Fetch all the secrets from the vault
+	secrets, err := secrets_manager.GetSecrets([]string{})
+	if err != nil {
+		// do something
+		fmt.Printf("Error while fetching secrets: %v", err)
+	}
+
+	for _, record := range secrets {
+		fmt.Printf("Records: %v\n", record)
+	}
+
+	updatedConfig := &azurekv.AzureConfig{
+		TenantID:     "<Updated Tenant ID>",     // Leave empty if you don't want to change the TenantID
+		ClientID:     "<Updated Client ID>",     //Leave empty if you don't want to change the ClientID
+		ClientSecret: "<Updated Client Secret>", // Leave empty if you don't want to change the ClientSecret
+		KeyURL:       "<Updated Key URL>",
+	}
+
+	// Changes the key
+	// If you don't want to change the config, pass updatedConfig as nil
+	isChanged, err := cfg.ChangeKey(updatedConfig)
+	if err != nil {
+		fmt.Printf("Error while changing key: %v", err)
+	} else {
+		fmt.Printf("Key changed: %v\n", isChanged)
+	}
+
+	// Decrypt the config
+	plainText, err := cfg.DecryptConfig(true)
+	if err != nil {
+		// do something
+		fmt.Printf("Error while decrypting config: %v", err)
+	} else {
+		fmt.Printf("Decrypted data: %v\n", plainText)
+	}
 }
 
-cfg := azurekv.NewAzureKeyValueStorage("ksm-config.json", &key)clientOptions := &core.ClientOptions{
-	Token:  "[One Time Access Token]",
-	Config: cfg,
-}
-
-secrets_manager := core.NewSecretsManager(clientOptions)
-
-// Fetch secrets from Keeper Security Vault 
-record_uids := []string{}
-records, err := secrets_manager.GetSecrets(record_uids)
-if err != nil {
-	// do something
-}
-
-for _, record := range records {
-		// do something with record
-		fmt.Println(record.Title())
-}
-
-updatedKey := azurekv.AzureConfig{
-		TenantID:     "<Updated Tenant ID>",
-		ClientID:     "<Updated Client ID>",
-		ClientSecret: "<Updated Client Secret>",
-		KeyURL:     "<Updated Key URL>",
-}
-
-// isChanged gives boolean value to check the key is changed or not.
-isChanged, err := cfg.ChangeKey(updatedKey)
-if err != nil {
-	// do something
-}
-
-plainText, err := cfg.DecryptConfig(true)
-if err != nil {
-	// do something
-}
-
-fmt.Println(plainText)
 ```
 The storage will require an Azure Key URL, as well Secrets Manager configuration which will be encrypted by Azure Key Vault.
 

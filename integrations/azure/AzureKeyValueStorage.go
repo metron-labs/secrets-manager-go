@@ -292,7 +292,11 @@ func fetchKeyDetails(keyURL string) (string, string, string, error) {
 }
 
 // Changes the key used to encrypt/decrypt the configuration.
-func (s *azureKeyValueStorage) ChangeKey(newKeyURL string) (bool, error) {
+func (s *azureKeyValueStorage) ChangeKey(updatedConfig *AzureConfig) (bool, error) {
+	if updatedConfig == nil {
+		return false, fmt.Errorf("updatedConfig is nil")
+	}
+
 	oldState := struct {
 		vaultURL, keyName, keyVersion string
 		cryptoClient                  *azkeys.Client
@@ -301,17 +305,23 @@ func (s *azureKeyValueStorage) ChangeKey(newKeyURL string) (bool, error) {
 	}
 
 	// Extract the key details like vaultURL, keyname and keyversion from the new key URL `https://<vault-name>.vault.azure.net/keys/<key-name>/<version>`
-	vaultURL, keyName, keyVersion, err := fetchKeyDetails(newKeyURL)
+	vaultURL, keyName, keyVersion, err := fetchKeyDetails(updatedConfig.KeyURL)
 	if err != nil {
-		logger.Errorf("Failed to extract key details from URL '%s': %v", newKeyURL, err)
-		return false, fmt.Errorf("failed to extract key details from URL '%s': %w", newKeyURL, err)
+		logger.Errorf("Failed to extract key details from URL '%s': %v", updatedConfig.KeyURL, err)
+		return false, fmt.Errorf("failed to extract key details from URL '%s': %w", updatedConfig.KeyURL, err)
 	}
 
-	s.azureConfig.KeyURL = newKeyURL
+	s.azureConfig.KeyURL = updatedConfig.KeyURL
 	s.keyName = keyName
 	s.keyVersion = keyVersion
 
-	cred, err := fetchCredentials(s.azureConfig)
+	if updatedConfig.ClientID == "" && updatedConfig.ClientSecret == "" && updatedConfig.TenantID == "" {
+		updatedConfig.ClientID = s.azureConfig.ClientID
+		updatedConfig.ClientSecret = s.azureConfig.ClientSecret
+		updatedConfig.TenantID = s.azureConfig.TenantID
+	}
+
+	cred, err := fetchCredentials(updatedConfig)
 	if err != nil {
 		return false, err
 	}
@@ -327,7 +337,7 @@ func (s *azureKeyValueStorage) ChangeKey(newKeyURL string) (bool, error) {
 		s.keyName = oldState.keyName
 		s.keyVersion = oldState.keyVersion
 		s.cryptoClient = oldState.cryptoClient
-		logger.Errorf("Failed to change the key to '%s' for config '%s': %v", newKeyURL, s.configFileLocation, err)
+		logger.Errorf("Failed to change the key to '%s' for config '%s': %v", updatedConfig.KeyURL, s.configFileLocation, err)
 		return false, fmt.Errorf("failed to change the key for %s: %w", s.configFileLocation, err)
 	}
 
