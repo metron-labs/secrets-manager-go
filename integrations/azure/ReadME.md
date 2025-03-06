@@ -39,16 +39,19 @@ import (
 
 func main() {
 	fileName := "ksm-config.json" // Change the file name accordingly to your config file
-	cfg := azurekv.NewAzureKeyValueStorage(fileName, &azurekv.AzureConfig{
+	keyURL := "<Key URL>"         // KeyURL of the key
+
+	//Initialize the Azure Key Vault Storage
+	cfg := azurekv.NewAzureKeyValueStorage(fileName, keyURL, &azurekv.AzureConfig{
 		TenantID:     "<Some Tenant ID>",
 		ClientID:     "<Some Client ID>",
 		ClientSecret: "<Some Client Secret>",
-		KeyURL:       "<Key URL>",
 	})
 
 	// Print the value of Client ID from the config
 	fmt.Printf("key value: %s", cfg.Get(core.KEY_CLIENT_ID))
 
+	// create a new secrets manager client
 	secrets_manager := core.NewSecretsManager(&core.ClientOptions{
 		Config: cfg,
 	})
@@ -60,19 +63,21 @@ func main() {
 		fmt.Printf("Error while fetching secrets: %v", err)
 	}
 
+	// Print all the secrets
 	for _, record := range secrets {
 		fmt.Printf("Records: %v\n", record)
 	}
 
 	updatedConfig := &azurekv.AzureConfig{
-		TenantID:     "<Updated Tenant ID>",     // Leave empty if you don't want to change the TenantID
-		ClientID:     "<Updated Client ID>",     //Leave empty if you don't want to change the ClientID
-		ClientSecret: "<Updated Client Secret>", // Leave empty if you don't want to change the ClientSecret
-		KeyURL:       "<Updated Key URL>", // Mandatory field 
+		TenantID:     "<Updated Tenant ID>",
+		ClientID:     "<Updated Client ID>",
+		ClientSecret: "<Updated Client Secret>",
 	}
+	updatedKeyURL := "<Updated Key URL>"
 
 	// Changes the key
-	isChanged, err := cfg.ChangeKey(updatedConfig)
+	// If you don't want to change Config, pass nil as a paramter
+	isChanged, err := cfg.ChangeKey(updatedKeyURL, updatedConfig)
 	if err != nil {
 		fmt.Printf("Error while changing key: %v", err)
 	} else {
