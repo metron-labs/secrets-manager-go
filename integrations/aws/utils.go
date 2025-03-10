@@ -12,7 +12,7 @@ import (
 
 	"github.com/aws/aws-sdk-go-v2/service/kms"
 	"github.com/aws/aws-sdk-go-v2/service/kms/types"
-	"github.com/keeper-security/secrets-manager-go/integrations/aws/logger"
+	awslog "github.com/keeper-security/secrets-manager-go/core/logger"
 )
 
 const (
@@ -35,6 +35,7 @@ func encryptSymmetric(client *kms.Client, keyId string, message []byte) ([]byte,
 		EncryptionAlgorithm: types.EncryptionAlgorithmSpecSymmetricDefault,
 	})
 	if err != nil {
+		awslog.Error("Symmetric Encryption failed: %v", err)
 		return nil, fmt.Errorf("failed to encrypt message: %w", err)
 	}
 
@@ -56,6 +57,7 @@ func decryptSymmetric(client *kms.Client, keyId string, cipherText []byte) ([]by
 		CiphertextBlob: cipherText,
 	})
 	if err != nil {
+		awslog.Error(fmt.Sprintf("Symmetric Decryption failed: %v", err))
 		return nil, fmt.Errorf("failed to decrypt message: %w", err)
 	}
 
@@ -99,7 +101,7 @@ func encryptAsymmetric(client *kms.Client, keyId string, message []byte) ([]byte
 		EncryptionAlgorithm: types.EncryptionAlgorithmSpecRsaesOaepSha256,
 	})
 	if err != nil {
-		logger.Errorf("Failed to encrypt symmetric key: %v", err)
+		awslog.Error(fmt.Sprintf("Asymmetric encryption failed: %v", err))
 		return nil, fmt.Errorf("failed to encrypt symmetric key: %v", err)
 	}
 
@@ -156,7 +158,7 @@ func decryptAsymmetric(client *kms.Client, keyId string, cipherText []byte) ([]b
 		EncryptionAlgorithm: types.EncryptionAlgorithmSpecRsaesOaepSha256,
 	})
 	if err != nil {
-		logger.Errorf("Failed to decrypt symmetric key: %v", err)
+		awslog.Error(fmt.Sprintf("Asymmetric decryption failed: %v", err))
 		return nil, fmt.Errorf("failed to decrypt symmetric key: %w", err)
 	}
 
@@ -172,7 +174,7 @@ func decryptAsymmetric(client *kms.Client, keyId string, cipherText []byte) ([]b
 
 	plaintext, err := aesGCM.Open(nil, components[1], append(components[3], components[2]...), nil)
 	if err != nil {
-		logger.Errorf("Data tampering detected or decryption failed: %v", err)
+		awslog.Error(fmt.Sprintf("Data tampering detected or decryption failed: %v", err))
 		return nil, err
 	}
 

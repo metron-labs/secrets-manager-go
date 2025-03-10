@@ -1,13 +1,15 @@
 package awskv
 
 import (
+	"fmt"
+
 	"github.com/keeper-security/secrets-manager-go/core"
-	"github.com/keeper-security/secrets-manager-go/integrations/aws/logger"
+	awslog "github.com/keeper-security/secrets-manager-go/core/logger"
 )
 
 func (a *awsKeyVaultStorage) ReadStorage() map[string]interface{} {
 	if err := a.loadConfig(); err != nil {
-		logger.Errorf("Failed to load config: %v", err)
+		awslog.Error(fmt.Sprintf("Failed to load config: %v", err))
 		return nil
 	}
 
@@ -28,7 +30,7 @@ func (a *awsKeyVaultStorage) SaveStorage(updatedConfig map[string]interface{}) {
 	}
 
 	if err := a.saveConfig(convertedConfig, false); err != nil {
-		logger.Errorf("Failed to save config: %v", err)
+		awslog.Error(fmt.Sprintf("Failed to save config: %v", err))
 	}
 }
 
@@ -57,10 +59,10 @@ func (a *awsKeyVaultStorage) Set(key core.ConfigKey, value interface{}) map[stri
 func (a *awsKeyVaultStorage) Delete(key core.ConfigKey) map[string]interface{} {
 	if _, found := a.config[key]; found {
 		delete(a.config, key)
-		logger.Debugf("Removed key: %s", string(key))
+		awslog.Debug(fmt.Sprintf("Deleted key '%s' from config", string(key)))
 		a.saveConfig(a.config, false)
 	} else {
-		logger.Warnf("No key '%s' was found in config", string(key))
+		awslog.Error(fmt.Sprintf("Key '%s' not found in config", string(key)))
 	}
 
 	return a.ReadStorage()
