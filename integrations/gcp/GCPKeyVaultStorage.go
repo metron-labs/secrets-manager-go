@@ -37,6 +37,7 @@ type googleCloudKeyVaultStorage struct {
 	config                 map[core.ConfigKey]interface{}
 	lastSavedConfigHash    string
 	keyResourceName        string
+	keyDetails             *kmspb.CryptoKey
 	gcpKMClient            *kms.KeyManagementClient
 	credentialFileWithPath string
 }
@@ -94,8 +95,9 @@ func NewGCPKeyVaultStorage(configFileLocation string, keyResourceName string, cr
 		config:                 make(map[core.ConfigKey]interface{}),
 		lastSavedConfigHash:    "",
 		keyResourceName:        keyResourceName,
-		gcpKMClient:            gcpKeyManagementClient,
+		keyDetails:             keyDetails,
 		credentialFileWithPath: credentialFileWithPath,
+		gcpKMClient:            gcpKeyManagementClient,
 	}
 
 	if err := gcpStorage.loadConfig(); err != nil {
@@ -112,6 +114,8 @@ func (g *googleCloudKeyVaultStorage) loadConfig() error {
 	var jsonError error
 	var decryptionError bool
 	var decryptData []byte
+
+	defer g.gcpKMClient.Close()
 
 	if err := g.createConfigFileIfMissing(); err != nil {
 		return err
@@ -145,12 +149,7 @@ func (g *googleCloudKeyVaultStorage) loadConfig() error {
 	}
 
 	if jsonError != nil {
-		keydata, err := getKeyDetails(ctx, g.gcpKMClient, g.keyResourceName)
-		if err != nil {
-			return err
-		}
-
-		if keydata.Purpose == kmspb.CryptoKey_ENCRYPT_DECRYPT {
+		if g.keyDetails.Purpose == kmspb.CryptoKey_ENCRYPT_DECRYPT {
 			decryptData, err = decryptionSymmetric(ctx, g.gcpKMClient, g.keyResourceName, contents)
 			if err != nil {
 				decryptionError = true
@@ -281,12 +280,7 @@ func getKeyDetails(ctx context.Context, client *kms.KeyManagementClient, keyReso
 
 // Encrypts the configuration data and writes it to the config file.
 func (g *googleCloudKeyVaultStorage) encryptConfig(ctx context.Context, config []byte) error {
-	keyDetails, err := getKeyDetails(ctx, g.gcpKMClient, g.keyResourceName)
-	if err != nil {
-		return err
-	}
-
-	if keyDetails.Purpose == kmspb.CryptoKey_ENCRYPT_DECRYPT {
+	if g.keyDetails.Purpose == kmspb.CryptoKey_ENCRYPT_DECRYPT {
 		glog.Debug("Encrypting config using symmetric key")
 		ciphertext, err := encryptionSymmetric(ctx, g.gcpKMClient, g.keyResourceName, config)
 		if err != nil {
@@ -361,12 +355,7 @@ func (g *googleCloudKeyVaultStorage) DecryptConfig(autosave bool) (string, error
 	defer gcpKeyManagementClient.Close()
 
 	g.gcpKMClient = gcpKeyManagementClient
-	keydata, err := getKeyDetails(ctx, g.gcpKMClient, g.keyResourceName)
-	if err != nil {
-		return "", fmt.Errorf("failed to get key details: %w", err)
-	}
-
-	if keydata.Purpose == kmspb.CryptoKey_ENCRYPT_DECRYPT {
+	if g.keyDetails.Purpose == kmspb.CryptoKey_ENCRYPT_DECRYPT {
 		plaintext, err = decryptionSymmetric(ctx, g.gcpKMClient, g.keyResourceName, ciphertext)
 		if err != nil {
 			glog.Error(fmt.Sprintf("Failed to decrypt config file: %s", err.Error()))
