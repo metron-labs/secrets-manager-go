@@ -18,7 +18,7 @@ import (
 
 	kms "cloud.google.com/go/kms/apiv1"
 	"cloud.google.com/go/kms/apiv1/kmspb"
-	"github.com/keeper-security/secrets-manager-go/integrations/gcp/logger"
+	glog "github.com/keeper-security/secrets-manager-go/core/logger"
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
@@ -28,8 +28,9 @@ const (
 
 // Encrypts the message using a symmetric key stored in Google Cloud KMS.
 func encryptionSymmetric(ctx context.Context, gcpKMClient *kms.KeyManagementClient, keyResourceName string, message []byte) ([]byte, error) {
+	glog.Debug("Encryption Symmetric")
 	if keyResourceName == "" {
-		logger.Errorf("keyResourceName is empty")
+		glog.Error("keyResourceName is empty")
 		return nil, fmt.Errorf("keyResourceName is empty")
 	}
 
@@ -43,8 +44,9 @@ func encryptionSymmetric(ctx context.Context, gcpKMClient *kms.KeyManagementClie
 		Plaintext:       message,
 		PlaintextCrc32C: wrapperspb.Int64(int64(crc32c(message))),
 	})
+
 	if err != nil {
-		logger.Errorf("failed to encrypt message: %v", err)
+		glog.Error(fmt.Sprintf("Symmetric Encryption failed: %v", err.Error()))
 		return nil, fmt.Errorf("failed to encrypt message: %w", err)
 	}
 
@@ -53,7 +55,9 @@ func encryptionSymmetric(ctx context.Context, gcpKMClient *kms.KeyManagementClie
 
 // Decrypts the ciphertext using a symmetric key stored in Google Cloud KMS.
 func decryptionSymmetric(ctx context.Context, gcpKMClient *kms.KeyManagementClient, keyResourceName string, cipherText []byte) ([]byte, error) {
+	glog.Debug("Decryption Symmetric")
 	if keyResourceName == "" {
+		glog.Error("Empty keyResourceName")
 		return nil, fmt.Errorf("keyResourceName is empty")
 	}
 
@@ -73,7 +77,7 @@ func decryptionSymmetric(ctx context.Context, gcpKMClient *kms.KeyManagementClie
 		CiphertextCrc32C: wrapperspb.Int64(int64(crc32c(cipherText))),
 	})
 	if err != nil {
-		logger.Errorf("failed to decrypt message: %v", err)
+		glog.Error(fmt.Sprintf("Symmetric Decryption failed: %v", err.Error()))
 		return nil, fmt.Errorf("failed to decrypt message: %w", err)
 	}
 
@@ -82,11 +86,12 @@ func decryptionSymmetric(ctx context.Context, gcpKMClient *kms.KeyManagementClie
 
 // Encrypts the key using an asymmetric key stored in Google Cloud KMS.
 func encryptionAsymmetricKey(ctx context.Context, gcpKMClient *kms.KeyManagementClient, keyResourceName string, key []byte) ([]byte, error) {
+	glog.Debug("Encryption Asymmetric Key")
 	response, err := gcpKMClient.GetPublicKey(ctx, &kmspb.GetPublicKeyRequest{
 		Name: keyResourceName,
 	})
 	if err != nil {
-		logger.Errorf("Failed to get public key: %v", err)
+		glog.Error(fmt.Sprintf("Error while fetching public key: %v", err.Error()))
 		return nil, fmt.Errorf("failed to get public key: %w", err)
 	}
 
@@ -109,7 +114,7 @@ func encryptionAsymmetricKey(ctx context.Context, gcpKMClient *kms.KeyManagement
 		Name: keyResourceName,
 	})
 	if err != nil {
-		logger.Errorf("Failed to get key details: %v", err)
+		glog.Error(fmt.Sprintf("Error while fetching key version: %v", err.Error()))
 		return nil, fmt.Errorf("failed to get key version: %w", err)
 	}
 
@@ -128,6 +133,7 @@ func encryptionAsymmetricKey(ctx context.Context, gcpKMClient *kms.KeyManagement
 
 // Decrypts the ciphertext key using an asymmetric key stored in Google Cloud KMS.
 func decryptAsymmetricKey(ctx context.Context, gcpKMClient *kms.KeyManagementClient, keyResourceName string, key []byte) ([]byte, error) {
+	glog.Debug("Decryption Asymmetric Key")
 	crc32c := func(data []byte) uint32 {
 		t := crc32.MakeTable(crc32.Castagnoli)
 		return crc32.Checksum(data, t)
@@ -142,7 +148,7 @@ func decryptAsymmetricKey(ctx context.Context, gcpKMClient *kms.KeyManagementCli
 
 	result, err := gcpKMClient.AsymmetricDecrypt(ctx, req)
 	if err != nil {
-		logger.Errorf("failed to decrypt ciphertext: %v", err)
+		glog.Error(fmt.Sprintf("Asymmetric Decryption failed: %v", err.Error()))
 		return nil, fmt.Errorf("failed to decrypt ciphertext: %w", err)
 	}
 
@@ -159,6 +165,7 @@ func decryptAsymmetricKey(ctx context.Context, gcpKMClient *kms.KeyManagementCli
 
 // Encrypts the message using an asymmetric key stored in Google Cloud KMS.
 func encryptAsymmetric(ctx context.Context, gcpKMClient *kms.KeyManagementClient, keyResourceName string, message []byte) ([]byte, error) {
+	glog.Debug("Encryption Asymmetric")
 	var blob []byte
 	key := make([]byte, 32)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
@@ -186,8 +193,8 @@ func encryptAsymmetric(ctx context.Context, gcpKMClient *kms.KeyManagementClient
 
 	encryptedKey, err := encryptionAsymmetricKey(ctx, gcpKMClient, keyResourceName, key)
 	if err != nil {
-		logger.Errorf("Failed to encrypt asymmetric key: %v", err)
-		return nil, err
+		glog.Error(fmt.Sprintf("Encryption Asymmetric failed: %v", err.Error()))
+		return nil, fmt.Errorf("failed to encrypt key: %w", err)
 	}
 
 	blob = append([]byte{}, []byte(BLOB_HEADER)...)
@@ -209,6 +216,7 @@ func encryptAsymmetric(ctx context.Context, gcpKMClient *kms.KeyManagementClient
 
 // Decrypts the given ciphertext using an asymmetric key stored in Google Cloud KMS.
 func decryptAsymmetric(ctx context.Context, gcpKMClient *kms.KeyManagementClient, keyResourceName string, cipherText []byte) ([]byte, error) {
+	glog.Debug("Decryption Asymmetric")
 	if !bytes.HasPrefix(cipherText, []byte(BLOB_HEADER)) {
 		return nil, fmt.Errorf("invalid BLOB_HEADER")
 	}
@@ -240,8 +248,8 @@ func decryptAsymmetric(ctx context.Context, gcpKMClient *kms.KeyManagementClient
 
 	plaintext, err := aesGCM.Open(nil, components[1], append(components[3], components[2]...), nil)
 	if err != nil {
-		logger.Errorf("Data tampering detected or decryption failed: %v", err)
-		return nil, err
+		glog.Error(fmt.Sprintf("Data tampering detected or decryption failed: %v", err.Error()))
+		return nil, fmt.Errorf("failed to decrypt message: %w", err)
 	}
 
 	return plaintext, nil

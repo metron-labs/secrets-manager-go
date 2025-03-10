@@ -1,13 +1,15 @@
 package gcpkv
 
 import (
+	"fmt"
+
 	"github.com/keeper-security/secrets-manager-go/core"
-	"github.com/keeper-security/secrets-manager-go/integrations/gcp/logger"
+	glog "github.com/keeper-security/secrets-manager-go/core/logger"
 )
 
 func (g *googleCloudKeyVaultStorage) ReadStorage() map[string]interface{} {
 	if err := g.loadConfig(); err != nil {
-		logger.Errorf("Failed to load config: %v", err)
+		glog.Error(fmt.Sprintf("Failed to load config: %v", err))
 		return nil
 	}
 
@@ -28,7 +30,7 @@ func (g *googleCloudKeyVaultStorage) SaveStorage(updatedConfig map[string]interf
 	}
 
 	if err := g.saveConfig(convertedConfig, false); err != nil {
-		logger.Errorf("Failed to save config: %v", err)
+		glog.Error(fmt.Sprintf("Failed to save config: %v", err))
 	}
 }
 
@@ -57,10 +59,10 @@ func (g *googleCloudKeyVaultStorage) Set(key core.ConfigKey, value interface{}) 
 func (g *googleCloudKeyVaultStorage) Delete(key core.ConfigKey) map[string]interface{} {
 	if _, found := g.config[key]; found {
 		delete(g.config, key)
-		logger.Debugf("Removed key: %s", string(key))
+		glog.Debug(fmt.Sprintf("Deleted key '%s' from config", string(key)))
 		g.saveConfig(g.config, false)
 	} else {
-		logger.Warnf("No key '%s' was found in config", string(key))
+		glog.Warning("No key '%s' was found in config", string(key))
 	}
 
 	return g.ReadStorage()

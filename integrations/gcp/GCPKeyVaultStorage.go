@@ -28,7 +28,7 @@ import (
 	kms "cloud.google.com/go/kms/apiv1"
 	"cloud.google.com/go/kms/apiv1/kmspb"
 	"github.com/keeper-security/secrets-manager-go/core"
-	"github.com/keeper-security/secrets-manager-go/integrations/gcp/logger"
+	glog "github.com/keeper-security/secrets-manager-go/core/logger"
 	"google.golang.org/api/option"
 )
 
@@ -69,7 +69,7 @@ func NewGCPKeyVaultStorage(configFileLocation string, gcpConfig *GCPConfig) *goo
 
 	gcpKeyManagementClient, err := kms.NewKeyManagementClient(ctx, option.WithCredentialsFile(gcpConfig.CredentialsFileLocation))
 	if err != nil {
-		logger.Errorf("Failed to create GCP Key Management client: %v", err)
+		glog.Error(fmt.Sprintf("Failed to create GCP Key Management client: %v", err))
 		return nil
 	}
 	defer gcpKeyManagementClient.Close()
@@ -80,7 +80,7 @@ func NewGCPKeyVaultStorage(configFileLocation string, gcpConfig *GCPConfig) *goo
 	}
 
 	if keyDetails.Purpose != kmspb.CryptoKey_ENCRYPT_DECRYPT && keyDetails.Purpose != kmspb.CryptoKey_ASYMMETRIC_DECRYPT {
-		logger.Error("The specified key is not of type ENCRYPT_DECRYPT or ASYMMETRIC_DECRYPT")
+		glog.Error("The given key is not of type ENCRYPT_DECRYPT or ASYMMETRIC_DECRYPT")
 		return nil
 	}
 
@@ -111,12 +111,12 @@ func (g *googleCloudKeyVaultStorage) loadConfig() error {
 
 	contents, err := os.ReadFile(g.configFileLocation)
 	if err != nil {
-		logger.Errorf("Failed to load config file %s: %s", g.configFileLocation, err.Error())
+		glog.Error(fmt.Sprintf("Failed to load config file %s: %s", g.configFileLocation, err.Error()))
 		return fmt.Errorf("failed to load config file %s", g.configFileLocation)
 	}
 
 	if len(contents) == 0 {
-		logger.Errorf("Empty config file %s", g.configFileLocation)
+		glog.Error(fmt.Sprintf("empty config file %s", g.configFileLocation))
 		contents = []byte("{}")
 	}
 
@@ -146,21 +146,21 @@ func (g *googleCloudKeyVaultStorage) loadConfig() error {
 			decryptData, err = decryptionSymmetric(ctx, g.gcpKMClient, g.gcpConfig.KeyResourceName, contents)
 			if err != nil {
 				decryptionError = true
-				logger.Errorf("Failed to decrypt config file: %s", err.Error())
+				glog.Error("Symmetric decryption failed: %s", err.Error())
 				return fmt.Errorf("failed to decrypt config file %s", g.configFileLocation)
 			}
 		} else {
 			decryptData, err = decryptAsymmetric(ctx, g.gcpKMClient, g.gcpConfig.KeyResourceName, contents)
 			if err != nil {
 				decryptionError = true
-				logger.Errorf("Failed to decrypt config file: %s", err.Error())
+				glog.Error(fmt.Sprintf("Asymmetric decryption failed: %s", err.Error()))
 				return fmt.Errorf("failed to decrypt config file %s", g.configFileLocation)
 			}
 		}
 
 		if err := json.Unmarshal(decryptData, &config); err != nil {
 			decryptionError = true
-			logger.Errorf("Failed to parse decrypted config file: %s", err.Error())
+			glog.Error(fmt.Sprintf("Parsing of decrypt config failed: %s", err.Error()))
 			return fmt.Errorf("failed to parse decrypted config file %s", g.configFileLocation)
 		}
 
@@ -169,7 +169,7 @@ func (g *googleCloudKeyVaultStorage) loadConfig() error {
 	}
 
 	if jsonError != nil && decryptionError {
-		logger.Errorf("Config file is not a valid JSON file: %s", jsonError.Error())
+		glog.Error(fmt.Sprintf("Config file is not a valid JSON file: %s", jsonError.Error()))
 		return fmt.Errorf("%s may contain JSON format problems", g.configFileLocation)
 	}
 
@@ -202,7 +202,7 @@ func (g *googleCloudKeyVaultStorage) saveConfig(updatedConfig map[core.ConfigKey
 	}
 
 	if !force && configHash == g.lastSavedConfigHash {
-		logger.Info("Skipped config JSON save. No changes detected.")
+		glog.Info("Skipped config JSON save. No changes detected.")
 		return nil
 	}
 
@@ -220,6 +220,7 @@ func (g *googleCloudKeyVaultStorage) saveConfig(updatedConfig map[core.ConfigKey
 
 // Creates a hash of the given configuration data.
 func (g *googleCloudKeyVaultStorage) createHash(config []byte) string {
+	glog.Debug("Creating hash of config")
 	hash := md5.Sum(config)
 	return hex.EncodeToString(hash[:])
 }
@@ -227,7 +228,7 @@ func (g *googleCloudKeyVaultStorage) createHash(config []byte) string {
 // Creates the config file if it does not already exist.
 func (g *googleCloudKeyVaultStorage) createConfigFileIfMissing() error {
 	if _, err := os.Stat(g.configFileLocation); !os.IsNotExist(err) {
-		logger.Infof("Config file already exists at: %s", g.configFileLocation)
+		glog.Info("Config file already exists at: %s", g.configFileLocation)
 		return nil
 	}
 
@@ -242,12 +243,14 @@ func (g *googleCloudKeyVaultStorage) createConfigFileIfMissing() error {
 		return err
 	}
 
-	logger.Infof("Config file created at: %s", g.configFileLocation)
+	glog.Info("Config file created at: %s", g.configFileLocation)
 	return nil
 }
 
 // Retrieves the details of the specified key from Google Cloud KMS.
 func getKeyDetails(ctx context.Context, client *kms.KeyManagementClient, keyResourceName string) (*kmspb.CryptoKey, error) {
+	glog.Info("Getting key details from GCP")
+
 	// Remove the cryptoKeyVersions/<version> from the keyResourceName
 	index := strings.Index(keyResourceName, "/cryptoKeyVersions/")
 	if index != -1 {
@@ -261,7 +264,7 @@ func getKeyDetails(ctx context.Context, client *kms.KeyManagementClient, keyReso
 	// Fetch the key details from GCP
 	resp, err := client.GetCryptoKey(ctx, req)
 	if err != nil {
-		logger.Errorf("Failed to get key details: %v", err)
+		glog.Error(fmt.Sprintf("Failed to fetch the key details from GCP: %v", err.Error()))
 		return nil, fmt.Errorf("failed to get key details: %w", err)
 	}
 
@@ -276,6 +279,7 @@ func (g *googleCloudKeyVaultStorage) encryptConfig(ctx context.Context, config [
 	}
 
 	if keyDetails.Purpose == kmspb.CryptoKey_ENCRYPT_DECRYPT {
+		glog.Debug("Encrypting config using symmetric key")
 		ciphertext, err := encryptionSymmetric(ctx, g.gcpKMClient, g.gcpConfig.KeyResourceName, config)
 		if err != nil {
 			return err
@@ -285,6 +289,7 @@ func (g *googleCloudKeyVaultStorage) encryptConfig(ctx context.Context, config [
 			return fmt.Errorf("failed to write encrypted config file: %w", err)
 		}
 	} else {
+		glog.Debug("Encrypting config using asymmetric key")
 		ciphertext, err := encryptAsymmetric(ctx, g.gcpKMClient, g.gcpConfig.KeyResourceName, config)
 		if err != nil {
 			return err
@@ -307,7 +312,7 @@ func (g *googleCloudKeyVaultStorage) ChangeKey(updatedGcpConfig *GCPConfig) (boo
 
 	newGCPKeyManagementClient, err := kms.NewKeyManagementClient(context.Background(), option.WithCredentialsFile(updatedGcpConfig.CredentialsFileLocation))
 	if err != nil {
-		logger.Errorf("Failed to create GCP Key Management client: %v", err)
+		glog.Error(fmt.Sprintf("failed to create GCP Key Management client: %v", err.Error()))
 		return false, fmt.Errorf("failed to create GCP Key Management client: %w", err)
 	}
 	defer newGCPKeyManagementClient.Close()
@@ -317,7 +322,7 @@ func (g *googleCloudKeyVaultStorage) ChangeKey(updatedGcpConfig *GCPConfig) (boo
 	if err := g.saveConfig(make(map[core.ConfigKey]interface{}), true); err != nil {
 		g.gcpKMClient = oldGCPKMCClient
 		g.keyResourceName = oldKeyResourceName
-		logger.Errorf("Failed to change the key to '%s' for config '%s': %v", updatedGcpConfig.KeyResourceName, g.configFileLocation, err)
+		glog.Error(fmt.Sprintf("Failed to change the key to '%s' for config '%s': %v", updatedGcpConfig.KeyResourceName, g.configFileLocation, err))
 		return false, fmt.Errorf("failed to change the key for %s: %w", g.configFileLocation, err)
 	}
 
@@ -335,14 +340,14 @@ func (g *googleCloudKeyVaultStorage) DecryptConfig(autosave bool) (string, error
 	}
 
 	if len(ciphertext) == 0 {
-		logger.Warnf("empty config file %s", g.configFileLocation)
+		glog.Warning(fmt.Sprintf("empty config file %s", g.configFileLocation))
 		return "", nil
 	}
 
 	// Create a new GCP Key Management client as previous client close while the NewGCPKeyVaultStorage finishes its execution
 	gcpKeyManagementClient, err := kms.NewKeyManagementClient(ctx, option.WithCredentialsFile(g.gcpConfig.CredentialsFileLocation))
 	if err != nil {
-		logger.Errorf("Failed to create GCP Key Management client: %v", err)
+		glog.Error(fmt.Sprintf("Failed to create GCP Key Management client: %v", err.Error()))
 		return "", fmt.Errorf("failed to create GCP Key Management client: %w", err)
 	}
 	defer gcpKeyManagementClient.Close()
@@ -356,23 +361,23 @@ func (g *googleCloudKeyVaultStorage) DecryptConfig(autosave bool) (string, error
 	if keydata.Purpose == kmspb.CryptoKey_ENCRYPT_DECRYPT {
 		plaintext, err = decryptionSymmetric(ctx, g.gcpKMClient, g.gcpConfig.KeyResourceName, ciphertext)
 		if err != nil {
-			logger.Errorf("Failed to decrypt config file: %s", err.Error())
+			glog.Error(fmt.Sprintf("Failed to decrypt config file: %s", err.Error()))
 			return "", fmt.Errorf("failed to decrypt config file %s", g.configFileLocation)
 		}
 	} else {
 		plaintext, err = decryptAsymmetric(ctx, g.gcpKMClient, g.gcpConfig.KeyResourceName, ciphertext)
 		if err != nil {
-			logger.Errorf("Failed to decrypt config file: %s", err.Error())
+			glog.Error(fmt.Sprintf("Failed to decrypt config file: %s", err.Error()))
 			return "", fmt.Errorf("failed to decrypt config file %s", g.configFileLocation)
 		}
 	}
 
 	if len(plaintext) == 0 {
-		logger.Error("empty config file")
+		glog.Error("empty config file")
 		return "", fmt.Errorf("empty config file")
 	} else if autosave {
 		if err := os.WriteFile(g.configFileLocation, plaintext, 0644); err != nil {
-			logger.Error(fmt.Sprintf("failed to write decrypted config file %s: %v", g.configFileLocation, err))
+			glog.Error(fmt.Sprintf("failed to write decrypted config file %s: %v", g.configFileLocation, err))
 			return "", fmt.Errorf("failed to write decrypted config file %s", g.configFileLocation)
 		}
 	}
