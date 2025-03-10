@@ -26,47 +26,89 @@ Configure GCP Connection
 configuration variables can be provided as 
 
 ```
+
+package main
+
 import (
+	"encoding/json"
+	"fmt"
+
 	"github.com/keeper-security/secrets-manager-go/core"
-	gcpkv "github.com/keeper-security/secrets-manager-go/gcpkv"
+	gcpkv "github.com/keeper-security/secrets-manager-go/integrations/gcp"
 )
 
-cfg := gcpkv.NewGCPKeyVaultStorage(<config-file-path-with-its-name>, <key-arn>, &gcpkv.GCPConfig{
-		CredentialsFileLocation: "<Location of credential file ending with .json>",
-		KeyResourceName:         "<Key Resource Name>",
-})
+func main() {
+	decryptConfig := false
+	changeKey := false
 
-client_options := &core.ClientOptions{
-	Token:  "[One Time Access Token]",
-	Config: cfg,
+	credentialFileWithPath := "<Location of credential file ending with .json>"
+	keyResourceName := "<Key Resource Name>"
+	configFileLocation := "<Location of config file ending with .json>"
+	oneTimeToken := "<One Time Access Token>"
+
+	cfg := gcpkv.NewGCPKeyVaultStorage(configFileLocation, keyResourceName, credentialFileWithPath)
+
+	client_options := &core.ClientOptions{
+		Token:  oneTimeToken,
+		Config: cfg,
+	}
+
+	fmt.Printf("Client ID Value: %s", cfg.Get(core.KEY_CLIENT_ID))
+
+	secrets_manager := core.NewSecretsManager(client_options)
+	secrets, err := secrets_manager.GetSecrets([]string{})
+	if err != nil {
+		// do something
+		fmt.Printf("Error while fetching secrets: %v\n", err)
+	}
+
+	for _, record := range secrets {
+		fmt.Printf("Records: %v\n", record)
+	}
+
+	if changeKey {
+		// isChanged gives boolean value to check the key is changed or not.
+		// Pass (updatedResourceName, "") as a parameter to change the key. Its just change the key for encryption and decryption.
+		updatedResourceName := "<Updated Key Resource Name>"
+		isChanged, err := cfg.ChangeKey(updatedResourceName, "")
+		if err != nil {
+			// do something
+		}
+
+		fmt.Printf("Key changed: %v\n", isChanged)
+
+		// Pass updated service account credentials along with the updated key if you need to change the credentails.
+		// Pass (updatedResourceName, updatedCredentialFileWithPath) as a parameter.
+		// updatedCredentialFileWithPath := "<Updated Location of credential file ending with .json>"
+		// isChanged, err = cfg.ChangeKey(updatedResourceName, updatedCredentialFileWithPath)
+		// if err != nil {
+		// 	// do something
+		// 	fmt.Printf("Error while changing key: %v\n", err)
+		// } else {
+		// 	fmt.Printf("Key changed: %v\n", isChanged)
+		// }
+
+		// fmt.Printf("Client ID Value after changing Key: %s", cfg.Get(core.KEY_CLIENT_ID))
+	}
+
+	if decryptConfig {
+		configs := make(map[core.ConfigKey]interface{})
+		// Decrypt the config
+		// Pass true as a parameter to save the decrypted config in the given file, else pass false
+		plainText, err := cfg.DecryptConfig(false)
+		if err != nil {
+			// do something
+			fmt.Printf("Error while decrypting config: %v", err)
+		} else {
+			if err := json.Unmarshal([]byte(plainText), &configs); err != nil {
+				fmt.Printf("Error while unmarshalling: %v", err)
+			}
+			fmt.Printf("Decrypted data: %v\n", configs["clientId"])
+		}
+	}
 }
 
-fmt.Printf("Client ID Value: %s", cfg.Get(core.KEY_CLIENT_ID))
 
-secrets_manager := core.NewSecretsManager(&client_options)
-secrets, err := secrets_manager.GetSecrets([]string{})
-if err != nil {
-	// do something
-} 
-
-for _, record := range secrets {
-	fmt.Printf("Records: %v\n", record)
-}
-
-isChanged, err := cfg.ChangeKey(&gcpkv.GCPConfig{
-		KeyResourceName: "<Key Resource Name>",
-})
-if err != nil {
-	// do something
-} 
-
-fmt.Printf("Key changed: %v\n", isChanged)
-plainText, err := cfg.DecryptConfig(true)
-if err != nil {
-	// do something
-}
-
-fmt.Printf("Decrypted data: %v\n", plainText)
 
 ```
 The storage will require an GCP credential file ended with .json, as well as Secrets Manager configuration which will be encrypted by GCP Cloud Key Management.
