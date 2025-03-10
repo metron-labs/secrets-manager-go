@@ -26,51 +26,107 @@ Configure AWS Connection
 configuration variables can be provided as 
 
 ```
+package main
+
 import (
+	"encoding/json"
+	"fmt"
+
 	"github.com/keeper-security/secrets-manager-go/core"
-	awskv "github.com/keeper-security/secrets-manager-go/awskv"
+	awskv "github.com/keeper-security/secrets-manager-go/integrations/aws"
 )
 
 func main() {
-	cfg := awskv.NewAWSKeyValueStorage(<config-file-path-with-its-name>, <key-arn>, &awskv.AWSConfig{
-		ClientID:     "<Some Client ID>",
-		ClientSecret: "<Some Client Secret>",
-		Region:       "<Cloud Region>",
+	decryptConfig := true
+	changeKey := true
+
+	clientID := "<Some Client ID>"
+	clientSecret := "<Some Client Secret>"
+	region := "<Cloud Region>"
+	keyARN := "arn:<partition>:kms:<region>:<account-id>:key/<key-id>"
+	oneTimeToken := "one time token"
+
+	// Initialize the AWS Key Vault Storage
+	cfg := awskv.NewAWSKeyValueStorage("", keyARN, &awskv.AWSConfig{
+		ClientID:     clientID,
+		ClientSecret: clientSecret,
+		Region:       region,
 	})
 
 	clientOptions := &core.ClientOptions{
-		Token:  "[One Time Access Token]",
+		Token:  oneTimeToken,
 		Config: cfg,
 	}
 
-	secrets_manager := core.NewSecretsManager(clientOptions)
+	fmt.Printf("Client ID in config: %v\n", cfg.Get(core.KEY_CLIENT_ID))
 
-	// Fetch secrets from Keeper Security Vault 
+	secrets_manager := core.NewSecretsManager(clientOptions)
+	// Fetch secrets from Keeper Security Vault
 	record_uids := []string{}
 	records, err := secrets_manager.GetSecrets(record_uids)
 	if err != nil {
 		// do something
+		fmt.Printf("Error while fetching secrets: %v", err)
 	}
 
 	for _, record := range records {
-			// do something with record
-			fmt.Println(record.Title())
+		// do something with record
+		fmt.Println(record.Title())
 	}
 
-	updatedKeyARN := "arn:<partition>:kms:<region>:<account-id>:key/<key-id>"
-	updatedConfig := awskv.AWSConfig{
-			ClientID:     "<Updated Client ID>",
-			ClientSecret: "<Updated Client Secret>",
-			Region:       "<Updated Region>",
+	if changeKey {
+		// Changes the key
+		// If you don't want to change Config, pass nil as a paramter
+		updatedKeyARN := "arn:<partition>:kms:<region>:<account-id>:key/<key-id>"
+		isChanged, err := cfg.ChangeKey(updatedKeyARN, nil)
+		if err != nil {
+			// do something
+			fmt.Printf("Error while changing key: %v", err)
+		}
+
+		fmt.Printf("Key is changed: %v \n", isChanged)
+		fmt.Printf("Client ID in config after changing key: %v\n", cfg.Get(core.KEY_CLIENT_ID))
+		// If you want to change the account credentials along with the updated key then pass updatedConfig as a paramter
+		// updatedClientID := "<Updated Client ID>"
+		// updatedClientSecret := "<Updated Client Secret>"
+		// updatedRegion := "<Updated Region>"
+		// updatedConfig := awskv.AWSConfig{
+		// 	ClientID:     updatedClientID,
+		// 	ClientSecret: updatedClientSecret,
+		// 	Region:       updatedRegion,
+		// }
+
+		// isChanged gives boolean value to check the key is changed or not.
+		// updatedConfig should be nil only when KeyARN need to change.
+		// isChanged, err = cfg.ChangeKey(updatedKeyARN, &updatedConfig)
+		// if err != nil {
+		// 	// do something
+		// 	fmt.Printf("Error while changing key: %v", err)
+		// }
+
+		// fmt.Printf("Key is changed: %v", isChanged)
 	}
 
-	// isChanged gives boolean value to check the key is changed or not.
-	// updatedConfig should be nil only when KeyARN need to change. 
-	isChanged, err := cfg.ChangeKey(updatedKeyARN, updatedConfig)
-	if err != nil {
-		// do something
+	configs := make(map[core.ConfigKey]interface{})
+	if decryptConfig {
+		// Decrypt the config
+		// Pass true as a parameter to save the decrypted config in the given file, else pass false
+		decryptedConfig, err := cfg.DecryptConfig(true)
+		if err != nil {
+			// do something
+			fmt.Printf("Error while decrypting config: %v", err)
+		} else {
+			if err := json.Unmarshal([]byte(decryptedConfig), &configs); err != nil {
+				// do something
+				fmt.Printf("Error while unmarshalling decrypted config: %v", err)
+			} else {
+				fmt.Printf("Decrypted data: %v\n", configs["clientId"])
+			}
+		}
+
 	}
 }
+
 ```
 The storage will require an AWS credentials if not present it will fetch from environment, as well Secrets Manager configuration which will be encrypted by AWS Key Management.
 
