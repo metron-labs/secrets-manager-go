@@ -38,7 +38,6 @@ type googleCloudKeyVaultStorage struct {
 	lastSavedConfigHash    string
 	keyResourceName        string
 	keyDetails             *kmspb.CryptoKey
-	gcpKMClient            *kms.KeyManagementClient
 	credentialFileWithPath string
 }
 
@@ -68,19 +67,12 @@ func NewGCPKeyVaultStorage(configFileLocation string, keyResourceName string, cr
 		return nil
 	}
 
-	gcpKeyManagementClient, err := kms.NewKeyManagementClient(ctx, option.WithCredentialsFile(credentialFileWithPath))
-	if err != nil {
-		glog.Error(fmt.Sprintf("Failed to create GCP Key Management client: %v", err.Error()))
-		return nil
-	}
-	defer gcpKeyManagementClient.Close()
-
 	if keyResourceName == "" {
 		glog.Error("Key resource name is empty")
 		return nil
 	}
 
-	keyDetails, err := getKeyDetails(ctx, gcpKeyManagementClient, keyResourceName)
+	keyDetails, err := getKeyDetails(ctx, credentialFileWithPath, keyResourceName)
 	if err != nil {
 		return nil
 	}
@@ -97,7 +89,6 @@ func NewGCPKeyVaultStorage(configFileLocation string, keyResourceName string, cr
 		keyResourceName:        keyResourceName,
 		keyDetails:             keyDetails,
 		credentialFileWithPath: credentialFileWithPath,
-		gcpKMClient:            gcpKeyManagementClient,
 	}
 
 	if err := gcpStorage.loadConfig(); err != nil {
@@ -115,7 +106,12 @@ func (g *googleCloudKeyVaultStorage) loadConfig() error {
 	var decryptionError bool
 	var decryptData []byte
 
-	defer g.gcpKMClient.Close()
+	client, err := getGCPKMSClient(g.credentialFileWithPath)
+	if err != nil {
+		return err
+	}
+
+	defer client.Close()
 
 	if err := g.createConfigFileIfMissing(); err != nil {
 		return err
@@ -150,14 +146,14 @@ func (g *googleCloudKeyVaultStorage) loadConfig() error {
 
 	if jsonError != nil {
 		if g.keyDetails.Purpose == kmspb.CryptoKey_ENCRYPT_DECRYPT {
-			decryptData, err = decryptionSymmetric(ctx, g.gcpKMClient, g.keyResourceName, contents)
+			decryptData, err = decryptionSymmetric(ctx, client, g.keyResourceName, contents)
 			if err != nil {
 				decryptionError = true
 				glog.Error("Symmetric decryption failed: %s", err.Error())
 				return fmt.Errorf("failed to decrypt config file %s", g.configFileLocation)
 			}
 		} else {
-			decryptData, err = decryptAsymmetric(ctx, g.gcpKMClient, g.keyResourceName, contents)
+			decryptData, err = decryptAsymmetric(ctx, client, g.keyResourceName, contents)
 			if err != nil {
 				decryptionError = true
 				glog.Error(fmt.Sprintf("Asymmetric decryption failed: %s", err.Error()))
@@ -255,8 +251,14 @@ func (g *googleCloudKeyVaultStorage) createConfigFileIfMissing() error {
 }
 
 // Retrieves the details of the specified key from Google Cloud KMS.
-func getKeyDetails(ctx context.Context, client *kms.KeyManagementClient, keyResourceName string) (*kmspb.CryptoKey, error) {
+func getKeyDetails(ctx context.Context, credentialFileWithPath string, keyResourceName string) (*kmspb.CryptoKey, error) {
 	glog.Info("Getting key details from GCP")
+	client, err := getGCPKMSClient(credentialFileWithPath)
+	if err != nil {
+		return nil, err
+	}
+
+	defer client.Close()
 
 	// Remove the cryptoKeyVersions/<version> from the keyResourceName
 	index := strings.Index(keyResourceName, "/cryptoKeyVersions/")
@@ -280,9 +282,15 @@ func getKeyDetails(ctx context.Context, client *kms.KeyManagementClient, keyReso
 
 // Encrypts the configuration data and writes it to the config file.
 func (g *googleCloudKeyVaultStorage) encryptConfig(ctx context.Context, config []byte) error {
+	client, err := getGCPKMSClient(g.credentialFileWithPath)
+	if err != nil {
+		return err
+	}
+
+	defer client.Close()
 	if g.keyDetails.Purpose == kmspb.CryptoKey_ENCRYPT_DECRYPT {
 		glog.Debug("Encrypting config using symmetric key")
-		ciphertext, err := encryptionSymmetric(ctx, g.gcpKMClient, g.keyResourceName, config)
+		ciphertext, err := encryptionSymmetric(ctx, client, g.keyResourceName, config)
 		if err != nil {
 			return err
 		}
@@ -292,7 +300,7 @@ func (g *googleCloudKeyVaultStorage) encryptConfig(ctx context.Context, config [
 		}
 	} else {
 		glog.Debug("Encrypting config using asymmetric key")
-		ciphertext, err := encryptAsymmetric(ctx, g.gcpKMClient, g.keyResourceName, config)
+		ciphertext, err := encryptAsymmetric(ctx, client, g.keyResourceName, config)
 		if err != nil {
 			return err
 		}
@@ -305,25 +313,29 @@ func (g *googleCloudKeyVaultStorage) encryptConfig(ctx context.Context, config [
 	return nil
 }
 
+func getGCPKMSClient(credentialFileWithPath string) (*kms.KeyManagementClient, error) {
+	ctx := context.Background()
+	client, err := kms.NewKeyManagementClient(ctx, option.WithCredentialsFile(credentialFileWithPath))
+	if err != nil {
+		glog.Error(fmt.Sprintf("Failed to create GCP Key Management client: %v", err.Error()))
+		return nil, fmt.Errorf("failed to create GCP Key Management client: %w", err)
+	}
+
+	return client, nil
+}
+
 func (g *googleCloudKeyVaultStorage) ChangeKey(updatedKeyResourceName string, updatedCredentialFileWithPath string) (bool, error) {
 	oldKeyResourceName := g.keyResourceName
-	oldGCPKMCClient := g.gcpKMClient
+	oldCredentialFileWithPath := g.credentialFileWithPath
 	if updatedCredentialFileWithPath == "" {
 		updatedCredentialFileWithPath = g.credentialFileWithPath
 	}
 
-	newGCPKeyManagementClient, err := kms.NewKeyManagementClient(context.Background(), option.WithCredentialsFile(updatedCredentialFileWithPath))
-	if err != nil {
-		glog.Error(fmt.Sprintf("failed to create GCP Key Management client: %v", err.Error()))
-		return false, fmt.Errorf("failed to create GCP Key Management client: %w", err)
-	}
-	defer newGCPKeyManagementClient.Close()
-
-	g.gcpKMClient = newGCPKeyManagementClient
+	g.credentialFileWithPath = updatedCredentialFileWithPath
 	g.keyResourceName = updatedKeyResourceName
 	if err := g.saveConfig(make(map[core.ConfigKey]interface{}), true); err != nil {
-		g.gcpKMClient = oldGCPKMCClient
 		g.keyResourceName = oldKeyResourceName
+		g.credentialFileWithPath = oldCredentialFileWithPath
 		glog.Error(fmt.Sprintf("Failed to change the key to '%s' for config '%s': %v", updatedKeyResourceName, g.configFileLocation, err))
 		return false, fmt.Errorf("failed to change the key for %s: %w", g.configFileLocation, err)
 	}
@@ -346,23 +358,21 @@ func (g *googleCloudKeyVaultStorage) DecryptConfig(autosave bool) (string, error
 		return "", nil
 	}
 
-	// Create a new GCP Key Management client as previous client close while the NewGCPKeyVaultStorage finishes its execution
-	gcpKeyManagementClient, err := kms.NewKeyManagementClient(ctx, option.WithCredentialsFile(g.credentialFileWithPath))
+	gcpKeyManagementClient, err := getGCPKMSClient(g.credentialFileWithPath)
 	if err != nil {
-		glog.Error(fmt.Sprintf("Failed to create GCP Key Management client: %v", err.Error()))
-		return "", fmt.Errorf("failed to create GCP Key Management client: %w", err)
+		return "", err
 	}
+
 	defer gcpKeyManagementClient.Close()
 
-	g.gcpKMClient = gcpKeyManagementClient
 	if g.keyDetails.Purpose == kmspb.CryptoKey_ENCRYPT_DECRYPT {
-		plaintext, err = decryptionSymmetric(ctx, g.gcpKMClient, g.keyResourceName, ciphertext)
+		plaintext, err = decryptionSymmetric(ctx, gcpKeyManagementClient, g.keyResourceName, ciphertext)
 		if err != nil {
 			glog.Error(fmt.Sprintf("Failed to decrypt config file: %s", err.Error()))
 			return "", fmt.Errorf("failed to decrypt config file %s", g.configFileLocation)
 		}
 	} else {
-		plaintext, err = decryptAsymmetric(ctx, g.gcpKMClient, g.keyResourceName, ciphertext)
+		plaintext, err = decryptAsymmetric(ctx, gcpKeyManagementClient, g.keyResourceName, ciphertext)
 		if err != nil {
 			glog.Error(fmt.Sprintf("Failed to decrypt config file: %s", err.Error()))
 			return "", fmt.Errorf("failed to decrypt config file %s", g.configFileLocation)
