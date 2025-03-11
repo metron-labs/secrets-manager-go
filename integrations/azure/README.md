@@ -112,7 +112,7 @@ func main() {
 # Configuration
 The NewAzureKeyValueStorage requires the following parameters to encrypt the KSM configuration using Azure Key Vault:
 * `ksmConfigFileName` : The file name of KSM configuration.
-* `AzureConfig` : Provide azure credentails `TenantID` , `ClientID` , `ClientSecret` and `KeyURL`.
+* `AzureConfig` : Provide azure credentails `TenantID` , `ClientID` and `ClientSecret`.
 * `KeyURL` : The name of the key resource to be used for encryption/decryption.
 
 
