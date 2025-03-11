@@ -327,15 +327,25 @@ func getGCPKMSClient(credentialFileWithPath string) (*kms.KeyManagementClient, e
 func (g *googleCloudKeyVaultStorage) ChangeKey(updatedKeyResourceName string, updatedCredentialFileWithPath string) (bool, error) {
 	oldKeyResourceName := g.keyResourceName
 	oldCredentialFileWithPath := g.credentialFileWithPath
+	oldKeyDetails := g.keyDetails
+
 	if updatedCredentialFileWithPath == "" {
 		updatedCredentialFileWithPath = g.credentialFileWithPath
 	}
 
+	keyDetails, err := getKeyDetails(context.Background(), updatedCredentialFileWithPath, updatedKeyResourceName)
+	if err != nil {
+		glog.Error(fmt.Sprintf("Failed to get key details for key '%s': %v", updatedKeyResourceName, err))
+		return false, err
+	}
+
+	g.keyDetails = keyDetails
 	g.credentialFileWithPath = updatedCredentialFileWithPath
 	g.keyResourceName = updatedKeyResourceName
 	if err := g.saveConfig(make(map[core.ConfigKey]interface{}), true); err != nil {
 		g.keyResourceName = oldKeyResourceName
 		g.credentialFileWithPath = oldCredentialFileWithPath
+		g.keyDetails = oldKeyDetails
 		glog.Error(fmt.Sprintf("Failed to change the key to '%s' for config '%s': %v", updatedKeyResourceName, g.configFileLocation, err))
 		return false, fmt.Errorf("failed to change the key for %s: %w", g.configFileLocation, err)
 	}
