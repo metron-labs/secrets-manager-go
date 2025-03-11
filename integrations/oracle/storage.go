@@ -1,13 +1,15 @@
 package oraclekv
 
 import (
+	"fmt"
+
 	"github.com/keeper-security/secrets-manager-go/core"
-	"github.com/keeper-security/secrets-manager-go/integrations/oracle/logger"
+	olog "github.com/keeper-security/secrets-manager-go/core/logger"
 )
 
 func (o *oracleKeyVaultStorage) ReadStorage() map[string]interface{} {
 	if err := o.loadConfig(); err != nil {
-		logger.Errorf("Failed to load config: %v", err)
+		olog.Error(fmt.Sprintf("Failed to load config: %v", err))
 		return nil
 	}
 
@@ -28,7 +30,7 @@ func (o *oracleKeyVaultStorage) SaveStorage(updatedConfig map[string]interface{}
 	}
 
 	if err := o.saveConfig(convertedConfig, false); err != nil {
-		logger.Errorf("Failed to save config: %v", err)
+		olog.Error(fmt.Sprintf("Failed to save config: %v", err))
 	}
 }
 
@@ -57,10 +59,10 @@ func (o *oracleKeyVaultStorage) Set(key core.ConfigKey, value interface{}) map[s
 func (o *oracleKeyVaultStorage) Delete(key core.ConfigKey) map[string]interface{} {
 	if _, found := o.config[key]; found {
 		delete(o.config, key)
-		logger.Debugf("Removed key: %s", string(key))
+		olog.Debug(fmt.Sprintf("Deleted key '%s' from config", string(key)))
 		o.saveConfig(o.config, false)
 	} else {
-		logger.Warnf("No key '%s' was found in config", string(key))
+		olog.Error(fmt.Sprintf("Key '%s' not found in config", string(key)))
 	}
 
 	return o.ReadStorage()

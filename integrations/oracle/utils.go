@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/keeper-security/secrets-manager-go/integrations/oracle/logger"
+	olog "github.com/keeper-security/secrets-manager-go/core/logger"
 	"github.com/oracle/oci-go-sdk/v65/common"
 	"github.com/oracle/oci-go-sdk/v65/keymanagement"
 )
@@ -20,70 +20,54 @@ const (
 	BLOB_HEADER = "\xff\xff"
 )
 
-func getKeyDetails(oracleConfig *OracleConfig) (*keymanagement.GetKeyResponse, error) {
-	client, err := keymanagement.NewKmsManagementClientWithConfigurationProvider(common.DefaultConfigProvider(), oracleConfig.VaultManagementEndpoint)
-	if err != nil {
-		return nil, err
-	}
-
-	req := keymanagement.GetKeyRequest{
-		KeyId: common.String(oracleConfig.KeyId),
-	}
-
-	resp, err := client.GetKey(context.Background(), req)
-	if err != nil {
-		logger.Errorf("Failed to get key details: %v", err)
-		return nil, err
-	}
-
-	return &resp, nil
-}
-
-func encryptSymmetric(client keymanagement.KmsCryptoClient, oracleConfig OracleConfig, message []byte) ([]byte, error) {
+func encryptSymmetric(client *keymanagement.KmsCryptoClient, keyConfig *KeyConfig, message []byte) ([]byte, error) {
+	olog.Debug("Encrypting Symmetric data with Oracle KMS")
 	req := keymanagement.EncryptRequest{
 		EncryptDataDetails: keymanagement.EncryptDataDetails{
 			EncryptionAlgorithm: keymanagement.EncryptDataDetailsEncryptionAlgorithmAes256Gcm,
-			KeyId:               common.String(oracleConfig.KeyId),
-			KeyVersionId:        common.String(oracleConfig.KeyVersionID),
+			KeyId:               common.String(keyConfig.KeyId),
+			KeyVersionId:        common.String(keyConfig.KeyVersionID),
 			Plaintext:           common.String(base64.StdEncoding.EncodeToString(message)),
 		},
 	}
 
 	resp, err := client.Encrypt(context.Background(), req)
 	if err != nil {
-		logger.Errorf("Failed to encrypt data: %v", err)
+		olog.Error(fmt.Sprintf("Failed to encrypt data: %v", err.Error()))
 		return nil, err
 	}
 
 	return []byte(*resp.EncryptedData.Ciphertext), nil
 }
 
-func decryptSymmetric(client keymanagement.KmsCryptoClient, oracleConfig OracleConfig, cipherText []byte) ([]byte, error) {
+func decryptSymmetric(client *keymanagement.KmsCryptoClient, keyConfig *KeyConfig, cipherText []byte) ([]byte, error) {
+	olog.Debug("Decrypting Symmetric data with Oracle KMS")
 	req := keymanagement.DecryptRequest{
 		DecryptDataDetails: keymanagement.DecryptDataDetails{
 			EncryptionAlgorithm: keymanagement.DecryptDataDetailsEncryptionAlgorithmAes256Gcm,
-			KeyId:               common.String(oracleConfig.KeyId),
-			KeyVersionId:        common.String(oracleConfig.KeyVersionID),
+			KeyId:               common.String(keyConfig.KeyId),
+			KeyVersionId:        common.String(keyConfig.KeyVersionID),
 			Ciphertext:          common.String(string(cipherText)),
 		},
 	}
 
 	resp, err := client.Decrypt(context.Background(), req)
 	if err != nil {
-		logger.Errorf("Failed to decrypt data: %v", err)
+		olog.Error(fmt.Sprintf("Failed to decrypt data: %v", err.Error()))
 		return nil, err
 	}
 
 	decodedData, err := base64.StdEncoding.DecodeString(*resp.DecryptedData.Plaintext)
 	if err != nil {
-		logger.Errorf("Failed to decode data: %v", err)
+		olog.Error(fmt.Sprintf("Failed to decode data: %v", err.Error()))
 		return nil, err
 	}
 
 	return decodedData, nil
 }
 
-func encryptAsymmetric(client keymanagement.KmsCryptoClient, oracleConfig OracleConfig, message []byte) ([]byte, error) {
+func encryptAsymmetric(client *keymanagement.KmsCryptoClient, keyConfig *KeyConfig, message []byte) ([]byte, error) {
+	olog.Debug("Encrypting Asymmetric data with Oracle KMS")
 	key := make([]byte, 32)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
 		return nil, fmt.Errorf("failed to generate random key: %w", err)
@@ -110,14 +94,14 @@ func encryptAsymmetric(client keymanagement.KmsCryptoClient, oracleConfig Oracle
 
 	req := keymanagement.EncryptRequest{EncryptDataDetails: keymanagement.EncryptDataDetails{
 		EncryptionAlgorithm: keymanagement.EncryptDataDetailsEncryptionAlgorithmRsaOaepSha256,
-		KeyId:               common.String(oracleConfig.KeyId),
-		KeyVersionId:        common.String(oracleConfig.KeyVersionID),
+		KeyId:               common.String(keyConfig.KeyId),
+		KeyVersionId:        common.String(keyConfig.KeyVersionID),
 		Plaintext:           common.String(base64.StdEncoding.EncodeToString(key)),
 	}}
 
 	enccryptData, err := client.Encrypt(context.Background(), req)
 	if err != nil {
-		logger.Errorf("Failed to encrypt data: %v", err)
+		olog.Error(fmt.Sprintf("Failed to encrypt key: %v", err.Error()))
 		return nil, err
 	}
 
@@ -137,7 +121,8 @@ func encryptAsymmetric(client keymanagement.KmsCryptoClient, oracleConfig Oracle
 	return blob, nil
 }
 
-func decryptAsymmetric(client keymanagement.KmsCryptoClient, oracleConfig OracleConfig, cipherText []byte) ([]byte, error) {
+func decryptAsymmetric(client *keymanagement.KmsCryptoClient, keyConfig *KeyConfig, cipherText []byte) ([]byte, error) {
+	olog.Debug("Decrypting Asymmetric data with Oracle KMS")
 	if !bytes.HasPrefix(cipherText, []byte(BLOB_HEADER)) {
 		return nil, fmt.Errorf("invalid BLOB_HEADER")
 	}
@@ -160,15 +145,15 @@ func decryptAsymmetric(client keymanagement.KmsCryptoClient, oracleConfig Oracle
 	req := keymanagement.DecryptRequest{
 		DecryptDataDetails: keymanagement.DecryptDataDetails{
 			EncryptionAlgorithm: keymanagement.DecryptDataDetailsEncryptionAlgorithmRsaOaepSha256,
-			KeyId:               common.String(oracleConfig.KeyId),
-			KeyVersionId:        common.String(oracleConfig.KeyVersionID),
+			KeyId:               common.String(keyConfig.KeyId),
+			KeyVersionId:        common.String(keyConfig.KeyVersionID),
 			Ciphertext:          common.String(string(components[0])),
 		},
 	}
 
 	decryptKey, err := client.Decrypt(context.Background(), req)
 	if err != nil {
-		logger.Errorf("Failed to decrypt key: %v", err)
+		olog.Error(fmt.Sprintf("Failed to decrypt key: %v", err.Error()))
 		return nil, err
 	}
 
@@ -189,7 +174,7 @@ func decryptAsymmetric(client keymanagement.KmsCryptoClient, oracleConfig Oracle
 
 	plaintext, err := aesGCM.Open(nil, components[1], append(components[3], components[2]...), nil)
 	if err != nil {
-		logger.Errorf("Data tampering detected or decryption failed: %v", err)
+		olog.Error(fmt.Sprintf("Data tampering detected or decryption failed: %v", err.Error()))
 		return nil, err
 	}
 
