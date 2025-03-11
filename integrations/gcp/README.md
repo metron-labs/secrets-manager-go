@@ -42,10 +42,10 @@ func main() {
 
 	credentialFileWithPath := "<Location of credential file ending with .json>"
 	keyResourceName := "<Key Resource Name>"
-	configFileLocation := "KSM config File with path"
+	ksmConfigFileName := ""
 	oneTimeToken := "<One Time Access Token>"
 
-	cfg := gcpkv.NewGCPKeyVaultStorage(configFileLocation, keyResourceName, credentialFileWithPath)
+	cfg := gcpkv.NewGCPKeyVaultStorage(ksmConfigFileName, keyResourceName, credentialFileWithPath)
 
 	client_options := &core.ClientOptions{
 		Token:  oneTimeToken,
@@ -113,7 +113,7 @@ func main() {
 # Configuration
 The NewGCPKeyVaultStorage requires the following parameters to encrypt the KSM configuration using GCP Cloud Key Management:
 
-* `ksm-config` : The file name along with its path for the KSM configuration.
+* `ksmConfigFileName` : The file name of KSM configuration.
 * `GCP CredentialFile` :  The file name along with its path for the GCP credential file.
 * `KeyResourceName` : The name of the key resource to be used for encryption/decryption.
 
