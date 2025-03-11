@@ -43,7 +43,7 @@ func main() {
 
 	credentialFileWithPath := "<Location of credential file ending with .json>"
 	keyResourceName := "<Key Resource Name>"
-	configFileLocation := "<Location of config file ending with .json>"
+	configFileLocation := "KSM config File with path"
 	oneTimeToken := "<One Time Access Token>"
 
 	cfg := gcpkv.NewGCPKeyVaultStorage(configFileLocation, keyResourceName, credentialFileWithPath)
@@ -111,7 +111,7 @@ func main() {
 
 
 ```
-The storage will require an GCP credential file ended with .json, as well as Secrets Manager configuration which will be encrypted by GCP Cloud Key Management.
+The storage will require GCP CredentialFileWithPath and KeyResourceName to encrypt the KSM Config by GCP Cloud Key Management.
 
 Provide `CredentialsFileLocation` and `KeyResourceName` variables.
 
