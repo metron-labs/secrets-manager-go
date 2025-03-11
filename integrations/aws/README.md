@@ -45,10 +45,10 @@ func main() {
 	region := "<Cloud Region>"
 	keyARN := "arn:<partition>:kms:<region>:<account-id>:key/<key-id>"
 	oneTimeToken := "one time token"
-	configFileName := ""
+	ksmConfigFileName := ""
 
 	// Initialize the AWS Key Vault Storage
-	cfg := awskv.NewAWSKeyValueStorage(configFileName, keyARN, &awskv.AWSConfig{
+	cfg := awskv.NewAWSKeyValueStorage(ksmConfigFileName, keyARN, &awskv.AWSConfig{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		Region:       region,
@@ -127,11 +127,13 @@ func main() {
 
 	}
 }
-
 ```
-The storage will require KeyARN and AWS Credentials if not present it will fetch from environment, to encrypt the KSM Config file using AWS Key Management.
-
-Provide `ClientID` , `ClientSecret` and `Region` variables.
+# Configuration
+The NewAWSKeyValueStorage requires the following parameters to encrypt the KSM configuration using GCP Cloud Key Management:
+* `ksmConfigFileName` : The file name of KSM configuration.
+* `KeyARN` : Key ARN of the key used for encryption/decryption. 
+* `AWSConfig` : Provide `ClientID` , `ClientSecret` and `Region` variables.
+* If you want to load credentials from Environment variable then pass nil in place of `AWSConfig`.
 
 KeyARN must be like this `arn:<partition>:kms:<region>:<account-id>:key/<key-id>`
 
