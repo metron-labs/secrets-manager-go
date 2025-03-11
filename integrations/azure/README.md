@@ -108,9 +108,9 @@ func main() {
 	}
 }
 ```
-The storage will require an Azure Key URL, as well Secrets Manager configuration which will be encrypted by Azure Key Vault.
+The storage will require an Azure Credentails and Azure KeyURL to encrypt the KSM config file.
 
-Provide `TenantID` , `ClientID` , `ClientSecret` and `KeyURL` variables.
+Provide azure credentails `TenantID` , `ClientID` , `ClientSecret` and `KeyURL`.
 
 KeyURL must be like this `https://<vault-name>.vault.azure.net/keys/<key-name>/<version>`
 
