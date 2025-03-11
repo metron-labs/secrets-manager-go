@@ -24,9 +24,6 @@ The Secrets Manager azure package are located in the Keeper Secrets Manager stor
 > `go get github.com/keeper-security/secrets-manager-go/integrations/azure`
 
 Configure Azure Connection
-
-configuration variables can be provided as 
-
 ```
 package main
 
