@@ -41,11 +41,12 @@ import (
 func main() {
 	decryptConfig := false
 	changeKey := false
-	fileName := "ksm-config.json" // Change the file name accordingly to your config file
+	ksmConfigFileName := "ksm-config.json" // Change the file name accordingly to your config file
 	keyURL := "<Key URL>"         // KeyURL of the key
 	oneTimeToken := "One Time Token"
+
 	//Initialize the Azure Key Vault Storage
-	cfg := azurekv.NewAzureKeyValueStorage(fileName, keyURL, &azurekv.AzureConfig{
+	cfg := azurekv.NewAzureKeyValueStorage(ksmConfigFileName, keyURL, &azurekv.AzureConfig{
 		TenantID:     "<Some Tenant ID>",
 		ClientID:     "<Some Client ID>",
 		ClientSecret: "<Some Client Secret>",
@@ -108,9 +109,12 @@ func main() {
 	}
 }
 ```
-The storage will require an Azure Credentails and Azure KeyURL to encrypt the KSM config file.
+# Configuration
+The NewAzureKeyValueStorage requires the following parameters to encrypt the KSM configuration using Azure Key Vault:
+* `ksmConfigFileName` : The file name of KSM configuration.
+* `AzureConfig` : Provide azure credentails `TenantID` , `ClientID` , `ClientSecret` and `KeyURL`.
+* `KeyURL` : The name of the key resource to be used for encryption/decryption.
 
-Provide azure credentails `TenantID` , `ClientID` , `ClientSecret` and `KeyURL`.
 
 KeyURL must be like this `https://<vault-name>.vault.azure.net/keys/<key-name>/<version>`
 
