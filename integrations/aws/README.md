@@ -45,9 +45,10 @@ func main() {
 	region := "<Cloud Region>"
 	keyARN := "arn:<partition>:kms:<region>:<account-id>:key/<key-id>"
 	oneTimeToken := "one time token"
+	configFileName := ""
 
 	// Initialize the AWS Key Vault Storage
-	cfg := awskv.NewAWSKeyValueStorage("", keyARN, &awskv.AWSConfig{
+	cfg := awskv.NewAWSKeyValueStorage(configFileName, keyARN, &awskv.AWSConfig{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
 		Region:       region,
@@ -128,14 +129,14 @@ func main() {
 }
 
 ```
-The storage will require an AWS credentials if not present it will fetch from environment, as well Secrets Manager configuration which will be encrypted by AWS Key Management.
+The storage will require KeyARN and AWS Credentials if not present it will fetch from environment, to encrypt the KSM Config file using AWS Key Management.
 
 Provide `ClientID` , `ClientSecret` and `Region` variables.
 
-KeyURL must be like this `arn:<partition>:kms:<region>:<account-id>:key/<key-id>`
+KeyARN must be like this `arn:<partition>:kms:<region>:<account-id>:key/<key-id>`
 
-For more information about URL see the AWS Key Management Documentation 
-https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html
+For more information about KeyARN see the AWS Key Management Documentation 
+https://docs.aws.amazon.com/kms/latest/developerguide/concepts.html#key-id
 
 You're ready to use the KSM integration 👍
 
