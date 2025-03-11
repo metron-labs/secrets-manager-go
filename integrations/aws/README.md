@@ -21,9 +21,8 @@ Setup
 The Secrets Manager AWS package are located in the Keeper Secrets Manager storage package which can be installed using 
 
 > `go get github.com/keeper-security/secrets-manager-go/integrations/aws`
-Configure AWS Connection
 
-configuration variables can be provided as 
+Configure AWS Connection
 
 ```
 package main
