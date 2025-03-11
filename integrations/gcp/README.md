@@ -111,13 +111,16 @@ func main() {
 
 
 ```
-The storage will require GCP CredentialFileWithPath and KeyResourceName to encrypt the KSM Config by GCP Cloud Key Management.
+# Configuration
+The NewGCPKeyVaultStorage requires the following parameters to encrypt the KSM configuration using GCP Cloud Key Management:
 
-Provide `CredentialsFileLocation` and `KeyResourceName` variables.
+* `ksm-config` : The file name along with its path for the KSM configuration.
+* `GCP CredentialFile` :  The file name along with its path for the GCP credential file.
+* `KeyResourceName` : The name of the key resource to be used for encryption/decryption.
 
-KeyResourceName must be like this `projects/PROJECT_ID/locations/LOCATION/keyRings/KEY_RING/cryptoKeys/KEY_NAME/cryptoKeyVersions/KEY_VERSION`
+KeyResourceName format must be `projects/PROJECT_ID/locations/LOCATION/keyRings/KEY_RING/cryptoKeys/KEY_NAME/cryptoKeyVersions/KEY_VERSION`
 
-For more information about URL see the GCP Cloud Key Management Documentation 
+For more information about KeyResourceName see the GCP Cloud Key Management Documentation 
 https://cloud.google.com/kms/docs/getting-resource-ids
 
 You're ready to use the KSM integration 👍
