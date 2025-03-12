@@ -17,7 +17,7 @@ Keeper Secrets Manager integrates with **Oracle Key Management Service (OCI KMS)
 
 The Secrets Manager oracle KSM module can be installed using npm
 
-> `go get github.com/keeper-security/secrets-manager-go/core`
+> `go get github.com/keeper-security/secrets-manager-go/integrations/oracle`
 2. Configure oracle Connection
 ```
 package main
