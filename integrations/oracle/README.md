@@ -20,6 +20,7 @@ The Secrets Manager oracle KSM module can be installed using npm
 > `go get github.com/keeper-security/secrets-manager-go/integrations/oracle`
 2. Configure oracle Connection
 ```
+
 package main
 
 import (
@@ -31,21 +32,20 @@ import (
 )
 
 func main() {
-    // Set true, if you want to decrypt the config
-	decryptConfig := false
-    // Set true if you want to change the key for encryption/decryption
-	changeKey := false
+
+	decryptConfig := true
+	changeKey := true
 
 	ksmConfigFile := ""
-	oneTimeToken := "One Time Token"
+	oneTimeToken := "oneTimeToken"
 	keyConfig := &oraclekv.KeyConfig{
-		KeyID:        "",
-		KeyVersionID: "",
+		KeyID:        "ocid1.key.oc1.<>.<>.<>",
+		KeyVersionID: "ocid1.keyversion.oc1.<>.<>.<>.<>",
 	}
 
 	oracleConfig := &oraclekv.OracleConfig{
-		VaultManagementEndpoint: "",
-		VaultCryptoEndpoint:     "",
+		VaultManagementEndpoint: "https://<>-management.kms.<>.oraclecloud.com",
+		VaultCryptoEndpoint:     "https://<>-crypto.kms.<>.oraclecloud.com",
 		Profile:                 "",
 		ProfileConfigPath:       "",
 	}
@@ -57,7 +57,6 @@ func main() {
 		},
 	)
 
-    // Fetching secrets from Keeper security vault
 	secrets, err := secrets_manager.GetSecrets([]string{})
 	if err != nil {
 		// do something
@@ -68,10 +67,13 @@ func main() {
 		}
 	}
 
-    // Changed the key for encryption/decryption
+	// change the key 
 	if changeKey {
-		updatedKeyConfig := &oraclekv.KeyConfig{}
-        // Pass updatedOracleConfig as nil, if you don't want to change oracle config. 
+		// If you want to change the key not oracle config, then pass nil in place of oracle config.
+		updatedKeyConfig := &oraclekv.KeyConfig{
+			KeyID:        "ocid1.key.oc1.<>.<>.<>",
+			KeyVersionID: "ocid1.keyversion.oc1.<>.<>.<>.<>",
+		}
 		isChanged, err := cfg.ChangeKey(updatedKeyConfig, nil)
 		if err != nil {
 			// do something
@@ -80,21 +82,21 @@ func main() {
 			fmt.Printf("Key changed: %t\n", isChanged)
 		}
 
-        // If you want to change the config along with the update key.
-		updatedOracleConfig := &oraclekv.OracleConfig{}
-		isChanged, err = cfg.ChangeKey(updatedKeyConfig, updatedOracleConfig)
-		if err != nil {
-			// do something
-			fmt.Printf("Key is not changed, got error: %s\n", err)
-		} else {
-			fmt.Printf("Key changed: %t\n", isChanged)
-		}
+		// Update the value of oracle config and oracle key config to changekey with configuration.
+		// updatedOracleConfig := &oraclekv.OracleConfig{}
+		// isChanged, err = cfg.ChangeKey(updatedKeyConfig, updatedOracleConfig)
+		// if err != nil {
+		//	// do something
+		//  	fmt.Printf("Key is not changed, got error: %s\n", err)
+		// } else {
+		//  	  fmt.Printf("Key changed: %t\n", isChanged)
+		// }
 	}
 
-    // Decrypt the config 
+	// decrypt the config
 	if decryptConfig {
 		config := make(map[core.ConfigKey]interface{})
-        // Pass true if you want to save decrypted config in ksm config file, else pass false
+		// Pass true if you want to save decryptconfig in ksm config file, else pass false.
 		decryptedConfig, err := cfg.DecryptConfig(false)
 		if err != nil {
 			// do something
@@ -104,12 +106,15 @@ func main() {
 				// do something
 				fmt.Printf("Error while Unmarshiling: %s\n", err)
 			} else {
-				fmt.Printf("Decrypted config: %s\n", config[core.KEY_CLIENT_ID])
+				fmt.Printf("CliendID after decrypting the KSM config: %s\n", config[core.KEY_CLIENT_ID])
 			}
 		}
 
 	}
+
 }
+
+
 ```
 # Configuration 
 The NewOracleKeyVaultStorage requires the following parameters to encrypt the KSM configuration using Oracle Vault:
