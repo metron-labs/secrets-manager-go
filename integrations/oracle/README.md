@@ -19,15 +19,113 @@ The Secrets Manager oracle KSM module can be installed using npm
 
 > `go get github.com/keeper-security/secrets-manager-go/core`
 2. Configure oracle Connection
+```
+package main
 
-By default, the oci-keymanagement library will use the **default OCI configuration file** (`~/.oci/config`).
+import (
+	"encoding/json"
+	"fmt"
+
+	"github.com/keeper-security/secrets-manager-go/core"
+	oraclekv "github.com/keeper-security/secrets-manager-go/integrations/oracle"
+)
+
+func main() {
+    // Set true, if you want to decrypt the config
+	decryptConfig := false
+    // Set true if you want to change the key for encryption/decryption
+	changeKey := false
+
+	ksmConfigFile := ""
+	oneTimeToken := "One Time Token"
+	keyConfig := &oraclekv.KeyConfig{
+		KeyId:        "",
+		KeyVersionID: "",
+	}
+
+	oracleConfig := &oraclekv.OracleConfig{
+		VaultManagementEndpoint: "",
+		VaultCryptoEndpoint:     "",
+		Profile:                 "",
+		ProfileConfigPath:       "",
+	}
+	cfg := oraclekv.NewOracleKeyVaultStorage(ksmConfigFile, keyConfig, oracleConfig)
+	secrets_manager := core.NewSecretsManager(
+		&core.ClientOptions{
+			Token:  oneTimeToken,
+			Config: cfg,
+		},
+	)
+
+    // Fetching secrets from Keeper security vault
+	secrets, err := secrets_manager.GetSecrets([]string{})
+	if err != nil {
+		// do something
+		fmt.Printf("Error: %s\n", err)
+	} else {
+		for _, secret := range secrets {
+			fmt.Printf("Recieved secret: %s\n", secret.Title())
+		}
+	}
+
+    // Changed the key for encryption/decryption
+	if changeKey {
+		updatedKeyConfig := &oraclekv.KeyConfig{}
+        // Pass updatedOracleConfig as nil, if you don't want to change oracle config. 
+		isChanged, err := cfg.ChangeKey(updatedKeyConfig, nil)
+		if err != nil {
+			// do something
+			fmt.Printf("Key is not changed, got error: %s\n", err)
+		} else {
+			fmt.Printf("Key changed: %t\n", isChanged)
+		}
+
+        // If you want to change the config along with the update key.
+		updatedOracleConfig := &oraclekv.OracleConfig{}
+		isChanged, err = cfg.ChangeKey(updatedKeyConfig, updatedOracleConfig)
+		if err != nil {
+			// do something
+			fmt.Printf("Key is not changed, got error: %s\n", err)
+		} else {
+			fmt.Printf("Key changed: %t\n", isChanged)
+		}
+	}
+
+    // Decrypt the config 
+	if decryptConfig {
+		config := make(map[core.ConfigKey]interface{})
+        // Pass true if you want to save decrypted config in ksm config file, else pass false
+		decryptedConfig, err := cfg.DecryptConfig(false)
+		if err != nil {
+			// do something
+			fmt.Printf("Error: %s\n", err)
+		} else {
+			if err := json.Unmarshal([]byte(decryptedConfig), &config); err != nil {
+				// do something
+				fmt.Printf("Error while Unmarshiling: %s\n", err)
+			} else {
+				fmt.Printf("Decrypted config: %s\n", config[core.KEY_CLIENT_ID])
+			}
+		}
+
+	}
+}
+```
+# Configuration 
+The NewOracleKeyVaultStorage requires the following parameters to encrypt the KSM configuration using Oracle Vault:
+* `ksmConfigFileName` : The file name of KSM configuration.
+* `keyConfig` : Provide oracle key credentials `KeyId` and `KeyVersionID`.
+* `oracleConfig` : Provide oracle credentials `VaultManagementEndpoint`, `VaultCryptoEndpoint`.
+* By default, the oci-keymanagement library will use the **default OCI configuration file** (`~/.oci/config`).
+* If you want to change the **default OCI configuration file** to **custom OCI configuration** then, update oracle credentials and add `Profile` and `ProfileConfigPath` to `oracleConfig`
+
+Reference for OCI configuration [https://docs.oracle.com/en-us/iaas/Content/API/Concepts/sdkconfig.htm#Example_Configuration] 
 
 See the (OCI documentation)[https://docs.oracle.com/en-us/iaas/Content/API/Concepts/sdkconfig.htm] for more details.
 
-1. Add oracle KMS Storage to Your Code
 
-Now that the oracle connection has been configured, you need to tell the Secrets Manager SDK to utilize the KMS as storage.
+You're ready to use the KSM integration 👍
 
-To do this, use `OciKeyValueStorage` as your Secrets Manager storage in the SecretsManager constructor.
+Using the Oracle Vault Integration
 
-The storage will require an `Config file location`, `configuration profile`(if there are multiple profile configurations) and the OCI `KMS endpoint` as well as the name of the Secrets Manager configuration file which will be encrypted by Oracle KMS.
+Review the SDK usage. Refer to the SDK (documentation) [https://docs.keeper.io/en/privileged-access-manager/secrets-manager/developer-sdk-library/golang-sdk#retrieve-secrets].
