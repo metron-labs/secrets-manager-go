@@ -25,7 +25,7 @@ func encryptSymmetric(client *keymanagement.KmsCryptoClient, keyConfig *KeyConfi
 	req := keymanagement.EncryptRequest{
 		EncryptDataDetails: keymanagement.EncryptDataDetails{
 			EncryptionAlgorithm: keymanagement.EncryptDataDetailsEncryptionAlgorithmAes256Gcm,
-			KeyId:               common.String(keyConfig.KeyId),
+			KeyId:               common.String(keyConfig.KeyID),
 			KeyVersionId:        common.String(keyConfig.KeyVersionID),
 			Plaintext:           common.String(base64.StdEncoding.EncodeToString(message)),
 		},
@@ -45,7 +45,7 @@ func decryptSymmetric(client *keymanagement.KmsCryptoClient, keyConfig *KeyConfi
 	req := keymanagement.DecryptRequest{
 		DecryptDataDetails: keymanagement.DecryptDataDetails{
 			EncryptionAlgorithm: keymanagement.DecryptDataDetailsEncryptionAlgorithmAes256Gcm,
-			KeyId:               common.String(keyConfig.KeyId),
+			KeyId:               common.String(keyConfig.KeyID),
 			KeyVersionId:        common.String(keyConfig.KeyVersionID),
 			Ciphertext:          common.String(string(cipherText)),
 		},
@@ -94,7 +94,7 @@ func encryptAsymmetric(client *keymanagement.KmsCryptoClient, keyConfig *KeyConf
 
 	req := keymanagement.EncryptRequest{EncryptDataDetails: keymanagement.EncryptDataDetails{
 		EncryptionAlgorithm: keymanagement.EncryptDataDetailsEncryptionAlgorithmRsaOaepSha256,
-		KeyId:               common.String(keyConfig.KeyId),
+		KeyId:               common.String(keyConfig.KeyID),
 		KeyVersionId:        common.String(keyConfig.KeyVersionID),
 		Plaintext:           common.String(base64.StdEncoding.EncodeToString(key)),
 	}}
@@ -145,7 +145,7 @@ func decryptAsymmetric(client *keymanagement.KmsCryptoClient, keyConfig *KeyConf
 	req := keymanagement.DecryptRequest{
 		DecryptDataDetails: keymanagement.DecryptDataDetails{
 			EncryptionAlgorithm: keymanagement.DecryptDataDetailsEncryptionAlgorithmRsaOaepSha256,
-			KeyId:               common.String(keyConfig.KeyId),
+			KeyId:               common.String(keyConfig.KeyID),
 			KeyVersionId:        common.String(keyConfig.KeyVersionID),
 			Ciphertext:          common.String(string(components[0])),
 		},

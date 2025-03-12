@@ -39,7 +39,7 @@ func main() {
 	ksmConfigFile := ""
 	oneTimeToken := "One Time Token"
 	keyConfig := &oraclekv.KeyConfig{
-		KeyId:        "",
+		KeyID:        "",
 		KeyVersionID: "",
 	}
 
@@ -114,7 +114,7 @@ func main() {
 # Configuration 
 The NewOracleKeyVaultStorage requires the following parameters to encrypt the KSM configuration using Oracle Vault:
 * `ksmConfigFileName` : The file name of KSM configuration.
-* `keyConfig` : Provide oracle key credentials `KeyId` and `KeyVersionID`.
+* `keyConfig` : Provide oracle key credentials `KeyID` and `KeyVersionID`.
 * `oracleConfig` : Provide oracle credentials `VaultManagementEndpoint`, `VaultCryptoEndpoint`.
 * By default, the oci-keymanagement library will use the **default OCI configuration file** (`~/.oci/config`).
 * If you want to change the **default OCI configuration file** to **custom OCI configuration** then, update oracle credentials and add `Profile` and `ProfileConfigPath` to `oracleConfig`

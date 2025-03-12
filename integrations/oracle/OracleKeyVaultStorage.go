@@ -34,7 +34,7 @@ type OracleConfig struct {
 }
 
 type KeyConfig struct {
-	KeyId        string
+	KeyID        string
 	KeyVersionID string
 }
 
@@ -310,7 +310,7 @@ func getKeyDetails(keyConfig *KeyConfig, oracleConfig *OracleConfig) (*keymanage
 	}
 
 	req := keymanagement.GetKeyRequest{
-		KeyId: common.String(keyConfig.KeyId),
+		KeyId: common.String(keyConfig.KeyID),
 	}
 
 	resp, err := client.GetKey(context.Background(), req)
